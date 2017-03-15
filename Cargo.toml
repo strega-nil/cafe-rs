@@ -1,0 +1,7 @@
+[package]
+name = "tal"
+version = "0.1.0"
+authors = ["ubsan <npmazzuca@gmail.com>"]
+
+[dependencies]
+pom = "1.0.0"
