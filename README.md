@@ -1,5 +1,5 @@
-TAL
+The Affine Language
 ---
+Based on the prior compiler for the pink language.
 
-This is a proof of concept for a systems level language which has both
-dependent and affine types. Currently, it has neither :)
+An attempt to bring dependent typing to systems programming.

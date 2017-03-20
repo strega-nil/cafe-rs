@@ -1,0 +1,112 @@
+/*
+  NOTES
+
+  - the self field is a stopgap
+    - it's intended to model single-field tuple structs as well as
+      enums
+    - I intend for us to find a better solution
+  - This is a first pass - do not expect it to be pretty! :P
+*/
+
+data Ordering = {
+  pub data Less = {};
+  pub data Equal = {};
+  pub data Greater = {};
+  self: Less | Equal | Greater;
+}
+
+interface(T: Type) Ord {
+  fn cmp(self: &T, other: &T) -> Ordering;
+}
+
+data(T: Type) Box = {
+  self: *mut T;
+}
+
+data(T: Type) Option = {
+  data Some = {
+    self: T;
+  };
+  data None = {};
+
+  self: None | Some;
+}
+
+data BinarySearchTree(T: Type) = {
+  data Node = {
+    element: T;
+    left: Option<Node<T>>;
+    right: Option<Node<T>>;
+  };
+
+  root: Option<Node>;
+}
+
+implement(T) BinarySearchTree(T) where Ord(T) = {
+  fn new() -> BinarySearchTree(T) {
+    BinarySearchTree(T) {
+      root: Option<T>::None;
+    }
+  }
+
+  fn insert(self: &mut BinarySearchTree(T), t: T) {
+    BinarySearchTree(T)::insert_into(&mut self.root, t)
+  }
+
+  fn insert_into(node: &mut Option(BinarySearchTree(T)::Node), t: T) {
+    match *node {
+      ref mut node @ Option(T)::None => {
+        *node = Option(T)::Some{BinarySearchTree(T)::Node::new(t)};
+      },
+      Option(T)::Some(ref mut node) => {
+        node.insert(t);
+      },
+    }
+  }
+}
+
+implement(T) BinarySearchTree(T)::Node where Ord(T) = {
+  fn new(t: T) -> BinarySearchTree(T)::Node {
+    BinarySearchTree(T)::Node {
+      element: t;
+      left: Option(T)::None;
+      right: Option(T)::None;
+    }
+  }
+
+  fn insert(self: &mut BinarySearchTree(T)::Node, t: T) {
+    match Ord(T)::cmp(&self.element, &t) {
+      Ordering::Less => {
+        BinarySearchTree(T)::insert_into(&mut self.left, t);
+      },
+      Ordering::Greater => {
+        BinarySearchTree(T)::insert_into(&mut self.right, t);
+      },
+      Ordering::Equal => {
+        // already inserted
+      },
+    }
+  }
+}
+
+struct WrapperTest {
+  self: i32;
+}
+
+implement Ord(WrapperTest) {
+  fn cmp(&self, other: &Self) -> Ordering {
+    Ord::cmp(&self.self, &other.self)
+  }
+}
+
+fn(T: Type) from_list(list: &move [T]) -> BinarySearchTree(T) where Ord(T) {
+  let mut ret = BinarySearchTree(T)::new();
+  for el in list {
+    ret.insert(el);
+  }
+  ret
+}
+
+fn main() {
+  let x = from_list(&move [WrapperTest(0), WrapperTest(1), WrapperTest(2)]);
+}

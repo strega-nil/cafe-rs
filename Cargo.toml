@@ -1,7 +1,14 @@
 [package]
-name = "tal"
+name = "pinkc"
 version = "0.1.0"
-authors = ["ubsan <npmazzuca@gmail.com>"]
+authors = ["Nicholas Mazzuca <npmazzuca@gmail.com>"]
+
+[[bin]]
+name = "pinkc"
+path = "src/driver.rs"
 
 [dependencies]
-pom = "1.0.0"
+llvm-sys = "38"
+argparse = "0.2.1"
+libc = "0.2.7"
+typed-arena = "1.1.0"
