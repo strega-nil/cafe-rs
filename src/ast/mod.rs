@@ -58,7 +58,6 @@ impl<'t> Ast<'t> {
   pub fn typeck(
     mut self,
     print_ast: ::DebugPrint,
-    opt: bool
   ) -> Result<mir::Mir<'t>, AstError<'t>> {
     for (_, &mut (ref func, ref mut body))
         in self.functions.iter_mut() {
@@ -87,7 +86,7 @@ impl<'t> Ast<'t> {
         compiler: fl!(),
       })
     }
-    let mut mir = mir::Mir::new(self.ctxt, opt);
+    let mut mir = mir::Mir::new(self.ctxt);
     let functions = std::mem::replace(&mut self.functions, HashMap::new());
     for (name, (func, body)) in functions {
       if let ::DebugPrint::Print = print_ast {
@@ -152,17 +151,6 @@ pub enum AstError<'t> {
     op: parse::Operand,
     lhs: Type<'t>,
     rhs: Type<'t>,
-    function: String,
-    compiler: (&'static str, u32),
-  },
-  InvalidTupleIndex {
-    len: usize,
-    index: u16,
-    function: String,
-    compiler: (&'static str, u32),
-  },
-  IndexingNonTuple {
-    ty: Type<'t>,
     function: String,
     compiler: (&'static str, u32),
   },

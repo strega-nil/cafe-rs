@@ -17,9 +17,6 @@ impl<'t> Display for Function<'t> {
     for (i, var) in self.locals.iter().enumerate() {
       writeln!(f, "  let v{}: {};", i, var)?;
     }
-    for (i, tmp) in self.temporaries.iter().enumerate() {
-      writeln!(f, "  let tmp{}: {};", i, tmp)?;
-    }
     for (i, block) in self.blocks.iter().enumerate() {
       writeln!(f, "bb{}:", i)?;
       for stmt in &block.statements {
@@ -78,16 +75,8 @@ impl Display for Literal {
         }
       }
       Literal::Bool(ref value) => write!(f, "{}", value),
-      Literal::Tuple(ref v) => {
-        write!(f, "(")?;
-        if v.len() == 0 {
-          write!(f, ")")
-        } else {
-          for el in &v[..v.len() - 1] {
-            write!(f, "{}, ", el)?;
-          }
-          write!(f, "{})", v[v.len() - 1])
-        }
+      Literal::Unit => {
+        write!(f, "()")
       }
     }
   }
@@ -98,7 +87,8 @@ impl Display for Value {
     match self.0 {
       ValueKind::Literal(ref lit) => write!(f, "lit {}", lit),
       ValueKind::Parameter(ref par) => write!(f, "{}", par),
-      ValueKind::Lvalue(ref lv) => write!(f, "{}", lv),
+      ValueKind::Local(ref loc) => write!(f, "{}", loc),
+      ValueKind::Deref(ref loc) => write!(f, "*{}", loc),
       ValueKind::Pos(ref inner) => write!(f, "Pos({})", inner),
       ValueKind::Neg(ref inner) => write!(f, "Neg({})", inner),
       ValueKind::Not(ref inner) => write!(f, "Not({})", inner),

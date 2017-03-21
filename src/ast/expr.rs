@@ -39,7 +39,7 @@ pub enum ExprKind<'t> {
   Variable(String),
   IntLiteral(u64),
   BoolLiteral(bool),
-  TupleLiteral(Vec<Expr<'t>>),
+  UnitLiteral,
   Return(Box<Expr<'t>>),
   Assign {
     dst: Box<Expr<'t>>,
@@ -123,17 +123,9 @@ impl<'t> Expr<'t> {
   }
 
   pub fn unit_lit(ctxt: &'t TypeContext<'t>) -> Self {
-    Self::tuple_lit(vec![], ctxt)
-  }
-
-  pub fn tuple_lit(v: Vec<Expr<'t>>, ctxt: &'t TypeContext<'t>) -> Self {
-    let mut tys = vec![];
-    for expr in &v {
-      tys.push(expr.ty);
-    }
     Expr {
-      kind: ExprKind::TupleLiteral(v),
-      ty: Type::tuple(tys, ctxt),
+      kind: ExprKind::UnitLiteral,
+      ty: Type::unit(ctxt),
     }
   }
 
@@ -218,7 +210,7 @@ impl<'t> Expr<'t> {
       | ExprKind::Deref(_)
       | ExprKind::IntLiteral(_)
       | ExprKind::BoolLiteral(_)
-      | ExprKind::TupleLiteral(_)
+      | ExprKind::UnitLiteral
       | ExprKind::Return(_)
       | ExprKind::Assign {..}
       | ExprKind::Field {..}
@@ -300,27 +292,12 @@ impl<'t> Expr<'t> {
   ) -> Result<(), AstError<'t>> {
     self.ty.generate_inference_id(uf, ctxt);
     match self.kind {
-      ExprKind::IntLiteral(_) | ExprKind::BoolLiteral(_) => {
+      ExprKind::IntLiteral(_)
+      | ExprKind::BoolLiteral(_)
+      | ExprKind::UnitLiteral => {
         uf.unify(self.ty, to_unify).map_err(|()|
           AstError::CouldNotUnify {
             first: self.ty,
-            second: to_unify,
-            function: function.name.clone(),
-            compiler: fl!(),
-          }
-        )
-      }
-      ExprKind::TupleLiteral(ref mut v) => {
-        let mut ty_vec = Vec::new();
-        for el in v {
-          el.ty.generate_inference_id(uf, ctxt);
-          ty_vec.push(el.ty);
-        }
-        self.ty = Type::tuple(ty_vec, ctxt);
-        let ty = self.ty;
-        uf.unify(self.ty, to_unify).map_err(|()|
-          AstError::CouldNotUnify {
-            first: ty,
             second: to_unify,
             function: function.name.clone(),
             compiler: fl!(),
@@ -752,18 +729,8 @@ impl<'t> Expr<'t> {
       ExprKind::IntLiteral(_)
       | ExprKind::BoolLiteral(_)
       | ExprKind::Variable(_)
+      | ExprKind::UnitLiteral
       => Ok(()),
-      ExprKind::TupleLiteral(ref mut v) => {
-        for el in v {
-          el.ty.finalize(uf, ctxt).map_err(|()|
-            AstError::NoActualType {
-              compiler: fl!(),
-              function: function.name.clone(),
-            }
-          )?
-        }
-        Ok(())
-      }
       ExprKind::Pos(ref mut inner) => {
         inner.finalize_type(uf, function, ctxt)?;
         assert!(self.ty == inner.ty);
@@ -864,7 +831,7 @@ impl<'t> Expr<'t> {
         ref mut src,
         ..
       } => {
-        assert!(*self.ty.0 == TypeVariant::Tuple(vec![]));
+        assert!(*self.ty.0 == TypeVariant::Unit);
         src.finalize_type(uf, function, ctxt)
       }
     }
@@ -894,21 +861,8 @@ impl<'t> Expr<'t> {
       ExprKind::BoolLiteral(b) => {
         (mir::Value::bool_literal(b), Some(block))
       }
-      ExprKind::TupleLiteral(v) => {
-        let mut mir_v = Vec::new();
-        let mut blk = Some(block);
-        for el in v {
-          if let Some(block) = blk.take() {
-            let (val, block) =
-              el.translate(mir, function, block, locals, fn_types);
-            blk = block;
-            mir_v.push(val);
-          } else {
-            return (mir::Value::unit_literal(), None);
-          }
-        }
-        (mir::Value::tuple_literal(mir_v, mir, &mut function.raw,
-          blk.as_mut().unwrap(), fn_types), blk)
+      ExprKind::UnitLiteral => {
+        (mir::Value::unit_literal(), Some(block))
       }
       ExprKind::Variable(name) => {
         if let Some(var) = locals.get(&name) {

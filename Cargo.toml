@@ -8,7 +8,7 @@ name = "pinkc"
 path = "src/driver.rs"
 
 [dependencies]
-llvm-sys = "38"
+#llvm-sys = "38"
 argparse = "0.2.1"
 libc = "0.2.7"
 typed-arena = "1.1.0"

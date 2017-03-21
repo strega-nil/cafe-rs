@@ -1,0 +1,11 @@
+fn main() -> s32 {
+  fib(5)
+}
+
+fn fib(n: s32) -> s32 {
+  if n <= 1 {
+    return n;
+  }
+
+  fib(n - 1) + fib(n - 2)
+}

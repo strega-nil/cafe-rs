@@ -692,23 +692,8 @@ impl<'src> Parser<'src> {
         }),
       },
       Token::OpenParen => {
-        let mut v = Vec::new();
-        loop {
-          if let Some(_) = self.maybe_eat(Token::CloseParen)? {
-            break;
-          }
-          v.push(self.parse_ty(ctxt, line!())?);
-          if let None = self.maybe_eat(Token::Comma)? {
-            if v.len() == 1 {
-              self.eat(Token::CloseParen, line!())?;
-              return Ok(v.remove(0));
-            } else {
-              self.eat(Token::CloseParen, line!())?;
-              break;
-            }
-          }
-        }
-        Ok(Type::tuple(v, ctxt))
+        self.eat(Token::CloseParen, line!())?;
+        Ok(Type::unit(ctxt))
       },
       Token::Operand(Operand::And) => {
         let inner = self.parse_ty(ctxt, line)?;
@@ -799,23 +784,13 @@ impl<'src> Parser<'src> {
         Some(Expr::int_lit_with_ty(value, ty))
       }
       Token::OpenParen => {
-        let mut v = Vec::new();
-        loop {
-          if let Some(_) = self.maybe_eat(Token::CloseParen)? {
-            break;
-          }
-          v.push(self.parse_single_expr(ctxt, line!())?);
-          if let None = self.maybe_eat(Token::Comma)? {
-            if v.len() == 1 {
-              self.eat(Token::CloseParen, line!())?;
-              return Ok(Some(v.remove(0)));
-            } else {
-              self.eat(Token::CloseParen, line!())?;
-              break;
-            }
-          }
+        if let Some(_) = self.maybe_eat(Token::CloseParen)? {
+          Some(Expr::unit_lit(ctxt))
+        } else {
+          let inner = self.parse_single_expr(ctxt, line!())?;
+          self.eat(Token::CloseParen, line!())?;
+          Some(inner)
         }
-        Some(Expr::tuple_lit(v, ctxt))
       }
       Token::Operand(Operand::Minus) => {
         let inner = self.parse_single_expr(ctxt, line!())?;

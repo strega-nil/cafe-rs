@@ -2,8 +2,8 @@ use std;
 use std::collections::HashMap;
 use ty::{self, Type, TypeVariant, TypeContext};
 
-mod llvm;
 mod fmt;
+mod interpret;
 
 const START_BLOCK: Block = Block(0);
 const END_BLOCK: Block = Block(1);
@@ -11,7 +11,6 @@ const END_BLOCK: Block = Block(1);
 #[derive(Debug)]
 pub struct Function<'t> {
   ty: ty::Function<'t>,
-  temporaries: Vec<Type<'t>>,
   locals: Vec<Type<'t>>,
   blocks: Vec<BlockData>,
 }
@@ -24,7 +23,6 @@ impl<'t> Function<'t> {
   pub fn new(ty: ty::Function<'t>) -> Self {
     let mut ret = Function {
       ty: ty,
-      temporaries: Vec::new(),
       locals: Vec::new(),
       blocks: Vec::new(),
     };
@@ -84,7 +82,7 @@ impl<'t> Function<'t> {
     fn_types: &HashMap<String,
     ty::Function<'t>>,
   ) -> Local {
-    if let ValueKind::Lvalue(Lvalue::Local(local)) = value.0 {
+    if let ValueKind::Local(local) = value.0 {
       local
     } else {
       let ty = value.ty(mir, self, fn_types);
@@ -92,83 +90,6 @@ impl<'t> Function<'t> {
       block.add_stmt(Lvalue::Local(loc), value, self);
       loc
     }
-  }
-
-  fn build(
-    self,
-    mir: &Mir<'t>,
-    llfunc: llvm::Value,
-    funcs: &HashMap<String, (llvm::Value, Type<'t>)>,
-  ) {
-    LlFunction::build(mir, self, llfunc, funcs)
-  }
-}
-
-pub struct LlFunction<'t> {
-  mir: Function<'t>,
-  raw: llvm::Value,
-  builder: llvm::Builder,
-  ret_ptr: llvm::Value,
-  locals: Vec<llvm::Value>,
-  blocks: Vec<llvm::BasicBlock>,
-}
-
-impl<'t> LlFunction<'t> {
-  fn build(
-    mir: &Mir<'t>,
-    mirfunc: Function<'t>,
-    llfunc: llvm::Value,
-    funcs: &HashMap<String, (llvm::Value, Type<'t>)>,
-  ) {
-    let builder = llvm::Builder::new();
-    let mut blocks = Vec::new();
-    for i in 0..mirfunc.blocks.len() {
-      blocks.push(llvm::BasicBlock::append(llfunc, i as u32));
-    }
-
-    builder.position_at_end(blocks[0]);
-
-    let mut locals = Vec::new();
-    for mir_local in &mirfunc.locals {
-      locals.push(builder.build_alloca(
-        llvm::get_type(&mir.target_data, *mir_local), "var"
-      ));
-    }
-
-    let ret_ptr = builder.build_alloca(
-      llvm::get_type(&mir.target_data, mirfunc.ty.output()), "ret",
-    );
-
-    let mut self_ = LlFunction {
-      mir: mirfunc,
-      raw: llfunc,
-      builder: builder,
-      ret_ptr: ret_ptr,
-      locals: locals,
-      blocks: blocks,
-    };
-
-    let mut i = self_.mir.blocks.len();
-    while let Some(blk) = self_.mir.blocks.pop() {
-      i -= 1;
-      self_.builder.position_at_end(self_.blocks[i]);
-      for stmt in blk.statements {
-        stmt.to_llvm(mir, &mut self_, funcs);
-      }
-      blk.terminator.to_llvm(mir, &self_);
-    }
-  }
-
-
-  fn get_local_ptr(&self, var: Local) -> llvm::Value {
-    self.locals[var.0 as usize]
-  }
-  fn get_local_value(&self, var: Local) -> llvm::Value {
-    self.builder.build_load(self.locals[var.0 as usize])
-  }
-
-  fn get_block(&self, blk: &Block) -> llvm::BasicBlock {
-    self.blocks[blk.0]
   }
 }
 
@@ -181,55 +102,19 @@ enum Literal {
     ty: ty::Int,
   },
   Bool(bool),
-  Tuple(Vec<Local>),
+  Unit,
 }
 
 impl Literal {
-  fn llvm_store<'t>(
-    self,
-    dst: llvm::Value,
-    function: &LlFunction<'t>
-  ) {
-    match self {
-      Literal::Int {
-        value,
-        ty,
-        ..
-      } => {
-        function.builder.build_store(
-          dst,
-          llvm::Value::const_int(llvm::get_int_type(ty), value),
-        )
-      }
-      Literal::Bool(value) => {
-        function.builder.build_store(
-          dst,
-          llvm::Value::const_bool(value),
-        )
-      }
-      Literal::Tuple(v) => {
-        let mut llvm_v = Vec::new();
-        for el in v {
-          llvm_v.push(function.get_local_value(el));
-        }
-        llvm::Value::make_struct(dst, &function.builder, &llvm_v)
-      }
-    }
-  }
-
-  fn ty<'t>(&self, mir: &Mir<'t>, function: &Function<'t>) -> Type<'t> {
+  fn ty<'t>(&self, mir: &Mir<'t>) -> Type<'t> {
     match *self {
       Literal::Int {
         ty,
         ..
       } => Type::sint(ty, mir.ctxt),
       Literal::Bool(_) => Type::bool(mir.ctxt),
-      Literal::Tuple(ref v) => {
-        let mut type_v = Vec::new();
-        for el in v {
-          type_v.push(function.get_local_ty(*el));
-        }
-        Type::tuple(type_v, mir.ctxt)
+      Literal::Unit => {
+        Type::unit(mir.ctxt)
       }
     }
   }
@@ -239,7 +124,9 @@ impl Literal {
 enum ValueKind {
   Literal(Literal),
   Parameter(Parameter),
-  Lvalue(Lvalue),
+
+  Local(Local),
+  Deref(Local),
 
   // -- unops --
   Pos(Local),
@@ -295,22 +182,9 @@ impl Value {
   pub fn bool_literal(value: bool) -> Self {
     Value(ValueKind::Literal(Literal::Bool(value)))
   }
-  pub fn tuple_literal<'t>(
-    v: Vec<Value>,
-    mir: &Mir<'t>,
-    function: &mut Function<'t>,
-    block: &mut Block,
-    fn_types: &HashMap<String, ty::Function<'t>>
-  ) -> Value {
-    let mut leaf_v = Vec::new();
-    for el in v {
-      leaf_v.push(function.flatten(el, mir, block, fn_types))
-    }
-    Value(ValueKind::Literal(Literal::Tuple(leaf_v)))
-  }
   #[inline(always)]
   pub fn unit_literal() -> Value {
-    Value(ValueKind::Literal(Literal::Tuple(vec![])))
+    Value(ValueKind::Literal(Literal::Unit))
   }
 
   #[inline(always)]
@@ -320,11 +194,7 @@ impl Value {
   }
   #[inline(always)]
   pub fn local(local: Local) -> Self {
-    Value::lvalue(Lvalue::Local(local))
-  }
-  #[inline(always)]
-  fn lvalue(lvalue: Lvalue) -> Self {
-    Value(ValueKind::Lvalue(lvalue))
+    Value(ValueKind::Local(local))
   }
 
   // -- unops --
@@ -377,7 +247,7 @@ impl Value {
     fn_types: &HashMap<String, ty::Function<'t>>,
   ) -> Self {
     let ptr = function.flatten(inner, mir, block, fn_types);
-    Value::lvalue(Lvalue::Deref(ptr))
+    Value(ValueKind::Deref(ptr))
   }
 
   // -- binops --
@@ -619,9 +489,16 @@ impl Value {
     fn_types: &HashMap<String, ty::Function<'t>>,
   ) -> Type<'t> {
     match self.0 {
-      ValueKind::Literal(ref lit) => lit.ty(mir, function),
+      ValueKind::Literal(ref lit) => lit.ty(mir),
       ValueKind::Parameter(par) => function.get_param_ty(par),
-      ValueKind::Lvalue(ref lv) => lv.ty(function),
+      ValueKind::Local(loc) => function.get_local_ty(loc),
+      ValueKind::Deref(loc) => {
+        if let TypeVariant::Reference(inner) = *function.get_local_ty(loc).0 {
+          inner
+        } else {
+          unreachable!()
+        }
+      }
 
       ValueKind::Pos(inner) | ValueKind::Neg(inner) | ValueKind::Not(inner)
       => function.get_local_ty(inner),
@@ -663,238 +540,6 @@ impl Value {
       },
     }
   }
-
-  fn llvm_store<'t>(
-    self,
-    dst: llvm::Value,
-    mir: &Mir<'t>,
-    function: &mut LlFunction<'t>,
-    funcs: &HashMap<String, (llvm::Value, Type<'t>)>,
-  ) {
-    let val = match self.0 {
-      ValueKind::Literal(lit) => {
-        lit.llvm_store(dst, function);
-        return;
-      }
-      ValueKind::Parameter(par) => llvm::Value::get_param(function.raw, par.0),
-      ValueKind::Lvalue(lv) => {
-        let ptr = lv.to_llvm(function);
-        function.builder.build_load(ptr)
-      },
-      ValueKind::Pos(inner) => {
-        let ty = function.mir.get_local_ty(inner);
-        let llinner = function.get_local_value(inner);
-        match *ty.0 {
-          TypeVariant::SInt(_) | TypeVariant::UInt(_) => llinner,
-          _ => panic!("ICE: {} can't be used in unary +", ty),
-        }
-      },
-      ValueKind::Neg(inner) => {
-        let ty = function.mir.get_local_ty(inner);
-        let llinner = function.get_local_value(inner);
-        match *ty.0 {
-          TypeVariant::SInt(_) => function.builder.build_neg(llinner),
-          _ => panic!("ICE: {} can't be used in unary -", ty),
-        }
-      },
-      ValueKind::Not(inner) => {
-        let ty = function.mir.get_local_ty(inner);
-        let llinner = function.get_local_value(inner);
-        match *ty.0 {
-          TypeVariant::SInt(_) | TypeVariant::UInt(_) | TypeVariant::Bool
-          => function.builder.build_not(llinner),
-          _ => panic!("ICE: {} can't be used in unary !", ty),
-        }
-      }
-      ValueKind::Ref(inner) => function.get_local_ptr(inner),
-      ValueKind::Add(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_) | TypeVariant::UInt(_)
-          => function.builder.build_add(lhs, rhs),
-          _ => panic!("ICE: {} can't be used in binary +", ty),
-        }
-      }
-      ValueKind::Sub(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_) | TypeVariant::UInt(_)
-          => function.builder.build_sub(lhs, rhs),
-          _ => panic!("ICE: {} can't be used in binary -", ty),
-        }
-      }
-      ValueKind::Mul(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_) | TypeVariant::UInt(_)
-          => function.builder.build_mul(lhs, rhs),
-          _ => panic!("ICE: {} can't be used in binary *", ty),
-        }
-      }
-      ValueKind::Div(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_) => function.builder.build_sdiv(lhs, rhs),
-          TypeVariant::UInt(_) => function.builder.build_udiv(lhs, rhs),
-          _ => panic!("ICE: {} can't be used in binary /", ty),
-        }
-      }
-      ValueKind::Rem(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_) => function.builder.build_srem(lhs, rhs),
-          TypeVariant::UInt(_) => function.builder.build_urem(lhs, rhs),
-          _ => panic!("ICE: {} can't be used in binary %", ty),
-        }
-      }
-      ValueKind::And(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_) | TypeVariant::UInt(_) | TypeVariant::Bool
-          => function.builder.build_and(lhs, rhs),
-          _ => panic!("ICE: {} can't be used in binary %", ty),
-        }
-      }
-      ValueKind::Xor(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_) | TypeVariant::UInt(_) | TypeVariant::Bool
-          => function.builder.build_xor(lhs, rhs),
-          _ => panic!("ICE: {} can't be used in binary %", ty),
-        }
-      }
-      ValueKind::Or(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_) | TypeVariant::UInt(_) | TypeVariant::Bool
-          => function.builder.build_or(lhs, rhs),
-          _ => panic!("ICE: {} can't be used in binary %", ty),
-        }
-      }
-      ValueKind::Shl(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_) | TypeVariant::UInt(_)
-          => function.builder.build_shl(lhs, rhs),
-          _ => panic!("ICE: {} can't be used in binary %", ty),
-        }
-      }
-      ValueKind::Shr(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_) => function.builder.build_ashr(lhs, rhs),
-          TypeVariant::UInt(_) => function.builder.build_lshr(lhs, rhs),
-          _ => panic!("ICE: {} can't be used in binary %", ty),
-        }
-      }
-      ValueKind::Eq(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_) | TypeVariant::UInt(_) | TypeVariant::Bool
-          => function.builder.build_icmp(llvm::IntEQ, lhs, rhs),
-          _ =>  panic!("ICE: {} can't be used in ==", ty),
-        }
-      }
-      ValueKind::Neq(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_) | TypeVariant::UInt(_) | TypeVariant::Bool
-          => function.builder.build_icmp(llvm::IntNE, lhs, rhs),
-          _ =>  panic!("ICE: {} can't be used in !=", ty),
-        }
-      }
-      ValueKind::Lt(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_)
-          => function.builder.build_icmp(llvm::IntSLT, lhs, rhs),
-          TypeVariant::UInt(_) | TypeVariant::Bool
-          => function.builder.build_icmp(llvm::IntULT, lhs, rhs),
-          _ =>  panic!("ICE: {} can't be used in <", ty),
-        }
-      }
-      ValueKind::Lte(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_)
-          => function.builder.build_icmp(llvm::IntSLE, lhs, rhs),
-          TypeVariant::UInt(_) | TypeVariant::Bool
-          => function.builder.build_icmp(llvm::IntULE, lhs, rhs),
-          _ =>  panic!("ICE: {} can't be used in <=", ty),
-        }
-      }
-      ValueKind::Gt(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_)
-          => function.builder.build_icmp(llvm::IntSGT, lhs, rhs),
-          TypeVariant::UInt(_) | TypeVariant::Bool
-          => function.builder.build_icmp(llvm::IntUGT, lhs, rhs),
-          _ =>  panic!("ICE: {} can't be used in >", ty),
-        }
-      }
-      ValueKind::Gte(lhs, rhs) => {
-        let ty = function.mir.get_local_ty(lhs);
-        let lhs = function.get_local_value(lhs);
-        let rhs = function.get_local_value(rhs);
-        match *ty.0 {
-          TypeVariant::SInt(_)
-          => function.builder.build_icmp(llvm::IntSGE, lhs, rhs),
-          TypeVariant::UInt(_) | TypeVariant::Bool
-          => function.builder.build_icmp(llvm::IntUGE, lhs, rhs),
-          _ =>  panic!("ICE: {} can't be used in >=", ty),
-        }
-      }
-      ValueKind::Call {
-        callee,
-        args,
-      } => {
-        let args = args
-          .into_iter()
-          .map(|a| function.get_local_value(a))
-          .collect::<Vec<_>>();
-        let (callee, output) = *funcs.get(&callee).unwrap();
-        let llret = function.builder.build_call(callee, &args);
-
-        if llvm::size_of_type(&mir.target_data, output) == 0 {
-          llvm::Value::const_nil()
-        } else {
-          llret
-        }
-      }
-    };
-    function.builder.build_store(dst, val);
-  }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -904,6 +549,7 @@ enum Lvalue {
   Return,
 }
 
+#[allow(dead_code)]
 impl Lvalue {
   fn ty<'t>(&self, function: &Function<'t>) -> Type<'t> {
     match *self {
@@ -921,36 +567,10 @@ impl Lvalue {
       }
     }
   }
-
-  fn to_llvm(self, function: &LlFunction) -> llvm::Value {
-    match self {
-      Lvalue::Local(loc) => {
-        function.get_local_ptr(loc)
-      }
-      Lvalue::Deref(loc) => {
-        function.get_local_value(loc)
-      }
-      Lvalue::Return => {
-        function.ret_ptr
-      }
-    }
-  }
 }
 
 #[derive(Debug)]
 struct Statement(Lvalue, Value);
-
-impl Statement {
-  fn to_llvm<'t>(
-    self,
-    mir: &Mir<'t>,
-    function: &mut LlFunction<'t>,
-    funcs: &HashMap<String, (llvm::Value, Type<'t>)>,
-  ) {
-    let dst = (self.0).to_llvm(function);
-    let src = (self.1).llvm_store(dst, mir, function, funcs);
-  }
-}
 
 #[derive(Debug)]
 enum Terminator {
@@ -962,36 +582,6 @@ enum Terminator {
   },
   // Normal return; should only happen in the end block
   Return,
-}
-
-impl Terminator {
-  fn to_llvm<'t>(self, mir: &Mir<'t>, function: &LlFunction<'t>) {
-    match self {
-      Terminator::Goto(mut b) => {
-        function.builder.build_br(function.get_block(&mut b));
-      },
-      Terminator::If {
-        cond,
-        mut then_blk,
-        mut else_blk,
-      } => {
-        let cond = function.get_local_value(cond);
-        function.builder.build_cond_br(
-          cond,
-          function.get_block(&mut then_blk),
-          function.get_block(&mut else_blk),
-        );
-      }
-      Terminator::Return => {
-        if llvm::size_of_type(&mir.target_data, function.mir.ty.output()) == 0 {
-          function.builder.build_void_ret();
-        } else {
-          let value = function.builder.build_load(function.ret_ptr);
-          function.builder.build_ret(value);
-        }
-      }
-    }
-  }
 }
 
 #[derive(Debug, PartialEq)]
@@ -1117,73 +707,25 @@ impl BlockData {
 pub struct Mir<'t> {
   functions: HashMap<String, Function<'t>>,
   ctxt: &'t TypeContext<'t>,
-
-  optimize: bool,
-
-  target_machine: llvm::TargetMachine,
-  target_data: llvm::TargetData,
 }
 
 impl<'t> Mir<'t> {
-  pub fn new(ctxt: &'t TypeContext<'t>, opt: bool) -> Mir<'t> {
-    let opt_level = if opt {
-      llvm::NoOptimization
-    } else {
-      llvm::DefaultOptimization
-    };
-    let target_machine = llvm::TargetMachine::new(opt_level).unwrap();
-    let target_data =
-      llvm::TargetData::from_target_machine(&target_machine);
-
+  pub fn new(ctxt: &'t TypeContext<'t>) -> Mir<'t> {
     Mir {
       functions: HashMap::new(),
       ctxt: ctxt,
-      optimize: opt,
-      target_machine: target_machine,
-      target_data: target_data,
     }
+  }
+
+  pub fn run(&self) {
+    println!(
+      "return value of main was: {:?}",
+      self.run_function("main", vec![]),
+    );
   }
 
   pub fn add_function(&mut self, name: String, func: Function<'t>) {
     self.functions.insert(name, func);
-  }
-
-  pub fn build_and_write(mut self, output: &str, print_llir: ::DebugPrint) {
-    let mut llvm_functions = HashMap::new();
-    let module = llvm::Module::new();
-
-    let optimizer = llvm::FnOptimizer::for_module(&module);
-
-    for (name, function) in &self.functions {
-      let llfunc = module.add_function(
-        &name,
-        llvm::get_function_type(&self.target_data, &function.ty),
-      );
-      llvm_functions.insert(
-        name.clone(),
-        (llfunc, function.ty.output()),
-      );
-    }
-
-    let functions = std::mem::replace(&mut self.functions, HashMap::new());
-    for (name, function) in functions {
-      let llfunc = llvm_functions.get(&name).unwrap().0;
-      function.build(&self, llfunc, &llvm_functions);
-      if self.optimize {
-        optimizer.optimize(llfunc);
-      }
-    }
-
-    if let ::DebugPrint::Print = print_llir {
-      module.dump();
-    }
-
-    module.verify();
-
-    match self.target_machine.emit_to_file(&module, output) {
-      Ok(()) => {},
-      Err(e) => panic!("Failed to write to output file: {:?}", e),
-    }
   }
 
   #[inline(always)]
