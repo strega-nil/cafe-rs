@@ -1,11 +1,22 @@
-fn main() -> s32 {
-  fib(5)
+
+fn main() {
+  fib_log(15)
 }
 
-fn fib(n: s32) -> s32 {
-  if n <= 1 {
-    return n;
-  }
 
-  fib(n - 1) + fib(n - 2)
+fn fib_log(n: u32) {
+  if n == 0 {
+    log(fib(0))
+  } else {
+    fib_log(n - 1);
+    log(fib(n));
+  }
+}
+
+fn fib(n: u32) -> u32 {
+  if n < 2 {
+    n
+  } else {
+    fib(n - 1) + fib(n - 2)
+  }
 }

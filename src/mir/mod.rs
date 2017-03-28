@@ -1,6 +1,6 @@
 use std;
 use std::collections::HashMap;
-use ty::{self, Type, TypeVariant, TypeContext};
+use ty::{self, Type, TypeContext};
 
 mod fmt;
 mod interpret;
@@ -13,6 +13,8 @@ pub struct Function<'t> {
   ty: ty::Function<'t>,
   locals: Vec<Type<'t>>,
   blocks: Vec<BlockData>,
+  //param_names: Vec<String>,
+  local_names: Vec<String>,
 }
 #[derive(Copy, Clone, Debug)]
 pub struct Local(u32);
@@ -20,25 +22,34 @@ pub struct Local(u32);
 struct Parameter(u32);
 
 impl<'t> Function<'t> {
-  pub fn new(ty: ty::Function<'t>) -> Self {
+  pub fn new(ty: ty::Function<'t>, param_names: Vec<String>) -> Self {
     let mut ret = Function {
       ty: ty,
-      locals: Vec::new(),
-      blocks: Vec::new(),
+      locals: vec![],
+      blocks: vec![],
+      local_names: vec![],
     };
     assert_eq!(
-      START_BLOCK, ret.new_block(Lvalue::Return, Terminator::Goto(END_BLOCK))
+      START_BLOCK,
+      ret.new_block(Lvalue::Local(Local(0)), Terminator::Goto(END_BLOCK))
     );
-    assert_eq!(END_BLOCK, ret.new_block(Lvalue::Return, Terminator::Return));
+    assert_eq!(
+      END_BLOCK,
+      ret.new_block(Lvalue::Local(Local(0)), Terminator::Return)
+    );
+    let typ = ret.ty.output();
+    ret.new_local(typ, None);
     let input_types = ret.ty.input().to_owned();
     {
-      for ty in &input_types {
-        ret.new_local(*ty);
+      assert_eq!(input_types.len(), param_names.len());
+      for (ty, name) in input_types.iter().zip(param_names) {
+        ret.new_local(*ty, Some(name));
       }
       let blk = ret.get_block(&mut START_BLOCK);
       for i in 0..input_types.len() as u32 {
         blk.statements.push(Statement(
-          Lvalue::Local(Local(i)), Value(ValueKind::Parameter(Parameter(i)))
+          Lvalue::Local(Local(i + 1)),
+          Value(ValueKind::Parameter(Parameter(i)))
         ))
       }
     }
@@ -54,14 +65,15 @@ impl<'t> Function<'t> {
     self.blocks.push(BlockData::new(expr, term));
     Block(self.blocks.len() - 1)
   }
-  pub fn new_local(&mut self, ty: Type<'t>) -> Local {
+  pub fn new_local(&mut self, ty: Type<'t>, name: Option<String>) -> Local {
     assert!(self.locals.len() < u32::max_value() as usize);
     self.locals.push(ty);
+    self.local_names.push(name.unwrap_or("".to_owned()));
     Local(self.locals.len() as u32 - 1)
   }
   pub fn get_param_local(&mut self, n: u32) -> Local {
     assert!(n < self.ty.input().len() as u32);
-    Local(n)
+    Local(n + 1)
   }
 
   fn get_block(&mut self, blk: &mut Block) -> &mut BlockData {
@@ -79,14 +91,13 @@ impl<'t> Function<'t> {
     value: Value,
     mir: &Mir<'t>,
     block: &mut Block,
-    fn_types: &HashMap<String,
-    ty::Function<'t>>,
+    fn_types: &HashMap<String, ty::Function<'t>>,
   ) -> Local {
     if let ValueKind::Local(local) = value.0 {
       local
     } else {
       let ty = value.ty(mir, self, fn_types);
-      let loc = self.new_local(ty);
+      let loc = self.new_local(ty, None);
       block.add_stmt(Lvalue::Local(loc), value, self);
       loc
     }
@@ -110,8 +121,13 @@ impl Literal {
     match *self {
       Literal::Int {
         ty,
-        ..
-      } => Type::sint(ty, mir.ctxt),
+        signed,
+        value: _,
+      } => if signed {
+        Type::sint(ty, mir.ctxt)
+      } else {
+        Type::uint(ty, mir.ctxt)
+      },
       Literal::Bool(_) => Type::bool(mir.ctxt),
       Literal::Unit => {
         Type::unit(mir.ctxt)
@@ -126,14 +142,11 @@ enum ValueKind {
   Parameter(Parameter),
 
   Local(Local),
-  Deref(Local),
 
   // -- unops --
   Pos(Local),
   Neg(Local),
   Not(Local),
-
-  Ref(Local),
 
   // -- binops --
   Add(Local, Local),
@@ -156,6 +169,7 @@ enum ValueKind {
   Gte(Local, Local),
 
   // -- other --
+  Log(Local),
   Call {
     callee: String,
     args: Vec<Local>,
@@ -224,30 +238,6 @@ impl Value {
     fn_types: &HashMap<String, ty::Function<'t>>,
   ) -> Self {
     Value(ValueKind::Not(function.flatten(inner, mir, block, fn_types)))
-  }
-  pub fn ref_<'t>(
-    inner: Self,
-    mir: &Mir<'t>,
-    function: &mut Function<'t>,
-    block: &mut Block,
-    fn_types: &HashMap<String, ty::Function<'t>>,
-  ) -> Self {
-    let inner_ty = inner.ty(mir, function, fn_types);
-    let inner = function.flatten(inner, mir, block, fn_types);
-    let ptr = function.new_local(Type::ref_(inner_ty, mir.ctxt));
-    block.add_stmt(Lvalue::Local(ptr), Value(ValueKind::Ref(inner)), function);
-    Value::local(ptr)
-  }
-
-  pub fn deref<'t>(
-    inner: Self,
-    mir: &Mir<'t>,
-    function: &mut Function<'t>,
-    block: &mut Block,
-    fn_types: &HashMap<String, ty::Function<'t>>,
-  ) -> Self {
-    let ptr = function.flatten(inner, mir, block, fn_types);
-    Value(ValueKind::Deref(ptr))
   }
 
   // -- binops --
@@ -461,6 +451,17 @@ impl Value {
     ))
   }
 
+  pub fn log<'t>(
+    arg: Self,
+    mir: &Mir<'t>,
+    function: &mut Function<'t>,
+    block: &mut Block,
+    fn_types: &HashMap<String, ty::Function<'t>>,
+  ) -> Self {
+    let value = function.flatten(arg, mir, block, fn_types);
+    Value(ValueKind::Log(value))
+  }
+
   // -- misc --
   pub fn call<'t>(
     callee: String,
@@ -492,19 +493,9 @@ impl Value {
       ValueKind::Literal(ref lit) => lit.ty(mir),
       ValueKind::Parameter(par) => function.get_param_ty(par),
       ValueKind::Local(loc) => function.get_local_ty(loc),
-      ValueKind::Deref(loc) => {
-        if let TypeVariant::Reference(inner) = *function.get_local_ty(loc).0 {
-          inner
-        } else {
-          unreachable!()
-        }
-      }
 
       ValueKind::Pos(inner) | ValueKind::Neg(inner) | ValueKind::Not(inner)
       => function.get_local_ty(inner),
-
-      ValueKind::Ref(inner)
-      => Type::ref_(function.get_local_ty(inner), mir.ctxt),
 
       ValueKind::Add(lhs, rhs)
       | ValueKind::Sub(lhs, rhs)
@@ -531,10 +522,11 @@ impl Value {
       | ValueKind::Gte(_, _)
       => Type::bool(mir.ctxt),
 
+      ValueKind::Log(_) => Type::unit(mir.ctxt),
       ValueKind::Call {
         ref callee,
         ..
-      } =>  {
+      } => {
         fn_types.get(callee).expect("ICE: no function prototype")
           .output()
       },
@@ -545,8 +537,6 @@ impl Value {
 #[derive(Copy, Clone, Debug)]
 enum Lvalue {
   Local(Local),
-  Deref(Local),
-  Return,
 }
 
 #[allow(dead_code)]
@@ -554,17 +544,6 @@ impl Lvalue {
   fn ty<'t>(&self, function: &Function<'t>) -> Type<'t> {
     match *self {
       Lvalue::Local(l) => function.get_local_ty(l),
-      Lvalue::Deref(l) => {
-        let outer_ty = function.get_local_ty(l);
-        if let TypeVariant::Reference(inner) = *outer_ty.0 {
-          inner
-        } else {
-          panic!("ICE: Attempt to take type of a deref of {:?}", outer_ty);
-        }
-      }
-      Lvalue::Return => {
-        function.ty.output()
-      }
     }
   }
 }
@@ -584,24 +563,12 @@ enum Terminator {
   Return,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Block(usize);
 
 impl Block {
   pub fn set(&mut self, loc: Local, val: Value, function: &mut Function) {
     self.add_stmt(Lvalue::Local(loc), val, function)
-  }
-
-  pub fn store<'t>(
-    &mut self,
-    ptr: Value,
-    val: Value,
-    mir: &Mir<'t>,
-    function: &mut Function<'t>,
-    fn_types: &HashMap<String, ty::Function<'t>>,
-  ) {
-    let local = function.flatten(ptr, mir, self, fn_types);
-    self.add_stmt(Lvalue::Deref(local), val, function)
   }
 
   pub fn set_tmp<'t>(
@@ -612,7 +579,7 @@ impl Block {
     fn_types: &HashMap<String, ty::Function<'t>>,
   ) -> Value {
     let ty = val.ty(mir, function, fn_types);
-    let tmp = function.new_local(ty);
+    let tmp = function.new_local(ty, None);
     self.add_stmt(Lvalue::Local(tmp), val, function);
     Value::local(tmp)
   }
@@ -638,7 +605,7 @@ impl Block {
     fn_types: &HashMap<String, ty::Function<'t>>,
   ) -> (Block, Block, Block, Value) {
     let cond = function.flatten(cond, mir, &mut self, fn_types);
-    let tmp = function.new_local(ty);
+    let tmp = function.new_local(ty, None);
 
     let mut then = function.new_block(Lvalue::Local(tmp),
       Terminator::Return);
@@ -672,7 +639,7 @@ impl Block {
 
   pub fn early_ret(mut self, function: &mut Function, value: Value) {
     let blk = function.get_block(&mut self);
-    blk.statements.push(Statement(Lvalue::Return, value));
+    blk.statements.push(Statement(Lvalue::Local(Local(0)), value));
     blk.terminator = Terminator::Goto(END_BLOCK);
   }
 
@@ -689,17 +656,18 @@ impl Block {
 
 #[derive(Debug)]
 struct BlockData {
+  // TODO(ubsan): remove this
   expr: Lvalue,
   statements: Vec<Statement>,
   terminator: Terminator,
 }
 
 impl BlockData {
-  fn new(expr: Lvalue, term: Terminator) -> BlockData {
+  fn new(expr: Lvalue, terminator: Terminator) -> BlockData {
     BlockData {
-      expr: expr,
+      expr,
       statements: Vec::new(),
-      terminator: term,
+      terminator,
     }
   }
 }
@@ -715,13 +683,6 @@ impl<'t> Mir<'t> {
       functions: HashMap::new(),
       ctxt: ctxt,
     }
-  }
-
-  pub fn run(&self) {
-    println!(
-      "return value of main was: {:?}",
-      self.run_function("main", vec![]),
-    );
   }
 
   pub fn add_function(&mut self, name: String, func: Function<'t>) {

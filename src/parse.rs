@@ -486,8 +486,8 @@ pub enum ParserError {
     line: u32,
     compiler: (&'static str, u32),
   },
-  DuplicatedFunctionArgument {
-    argument: String,
+  DuplicatedFunctionParameter {
+    parameter: String,
     function: String,
     compiler: (&'static str, u32),
   },
@@ -728,7 +728,12 @@ impl<'src> Parser<'src> {
             }
           }
           self.eat(Token::CloseParen, line!())?;
-          Some(Expr::call(name, args, ctxt))
+          if name == "log" {
+            assert!(args.len() == 1);
+            Some(Expr::log(args.remove(0), ctxt))
+          } else {
+            Some(Expr::call(name, args, ctxt))
+          }
         } else {
           Some(Expr::var(name, ctxt))
         }
@@ -805,16 +810,13 @@ impl<'src> Parser<'src> {
         Some(Expr::not(inner, ctxt))
       }
       Token::Operand(Operand::And) => {
-        let inner = self.parse_single_expr(ctxt, line!())?;
-        Some(Expr::ref_(inner, ctxt))
+        unimplemented!()
       }
       Token::Operand(Operand::AndAnd) => {
-        let inner = self.parse_single_expr(ctxt, line!())?;
-        Some(Expr::ref_(Expr::ref_(inner, ctxt), ctxt))
+        unimplemented!()
       }
       Token::Operand(Operand::Mul) => {
-        let inner = self.parse_single_expr(ctxt, line!())?;
-        Some(Expr::deref(inner, ctxt))
+        unimplemented!()
       }
       Token::KeywordTrue => Some(Expr::bool_lit(true, ctxt)),
       Token::KeywordFalse => Some(Expr::bool_lit(false, ctxt)),

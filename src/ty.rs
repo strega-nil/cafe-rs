@@ -28,7 +28,7 @@ impl<'t> TypeContext<'t> {
   }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Type<'t>(pub &'t TypeVariant<'t>);
 
 impl<'t> PartialEq for Type<'t> {
@@ -42,21 +42,6 @@ impl<'t> Eq for Type<'t> { }
 impl<'t> std::hash::Hash for Type<'t> {
   fn hash<H>(&self, state: &mut H) where H: std::hash::Hasher {
     (self.0 as *const _).hash(state);
-  }
-}
-
-impl<'t> std::fmt::Debug for Type<'t> {
-  fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-    match *self.0 {
-      TypeVariant::SInt(size) => write!(f, "SInt({:?})", size),
-      TypeVariant::UInt(size) => write!(f, "SInt({:?})", size),
-      TypeVariant::Bool => write!(f, "Bool"),
-      TypeVariant::Unit => write!(f, "Unit"),
-      TypeVariant::Diverging => write!(f, "Diverging"),
-      TypeVariant::Reference(inner) => write!(f, "Ref({:?})", inner),
-      TypeVariant::Infer(i) => write!(f, "Infer({:?})", i),
-      TypeVariant::InferInt(i) => write!(f, "InferInt({:?})", i),
-    }
   }
 }
 
@@ -194,7 +179,7 @@ impl<'t> Type<'t> {
     Ok(())
   }
 
-  fn get_final_ty(
+  pub fn get_final_ty(
     &self, uf: &mut UnionFind<'t>, ctxt: &'t TypeContext<'t>
   ) -> Option<Type<'t>> {
     match *self.0 {
@@ -349,9 +334,7 @@ impl<'t> UnionFind<'t> {
               _ => Err(()),
             }
           },
-          ref t @ TypeVariant::Infer(None)
-          | ref t @ TypeVariant::InferInt(None)
-            => panic!("ICE: attempted to unify {:?} with {:?}", ty, t),
+          TypeVariant::Infer(None) |TypeVariant::InferInt(None) => Ok(()),
           ref t => panic!("ICE: resolve isn't working: {:?}", t),
         }
       }

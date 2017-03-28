@@ -68,10 +68,10 @@ impl<'t> Ast<'t> {
       Expr::finalize_block_ty(body, &mut uf, func, &self.ctxt)?;
     }
     if let Some(&(ref f, _)) = self.functions.get("main") {
-      if *f.ret_ty.0 != ty::TypeVariant::SInt(ty::Int::I32) ||
-          f.args.len() != 0 {
+      if *f.ret_ty.0 != ty::TypeVariant::Unit ||
+          f.params.len() != 0 {
         let mut input = Vec::new();
-        for (_, &(_, ty)) in &f.args {
+        for (_, &(_, ty)) in &f.params {
           input.push(ty);
         }
         return Err(AstError::IncorrectMainType {
@@ -170,7 +170,7 @@ pub enum Item<'t> {
 pub struct Function<'t> {
   name: String,
   ret_ty: Type<'t>,
-  args: HashMap<String, (usize, Type<'t>)>,
+  params: HashMap<String, (usize, Type<'t>)>,
   raw: mir::Function<'t>,
 }
 
@@ -178,35 +178,40 @@ impl<'t> Function<'t> {
   fn new(
     name: String,
     ret_ty: Type<'t>,
-    args: Vec<(String, Type<'t>)>,
+    params: Vec<(String, Type<'t>)>,
   ) -> Result<Function<'t>, parse::ParserError> {
-    let mut args_ty = Vec::new();
-    let mut args_hashmap = HashMap::new();
-    let mut arg_index = 0;
+    let mut param_tys = vec![];
+    let mut param_names = vec![];
+    let mut param_hashmap = HashMap::new();
+    let mut param_index = 0;
 
 
-    for (arg_name, arg_ty) in args {
-      if !args_hashmap.contains_key(&arg_name) {
-        args_ty.push(arg_ty);
+    for (param_name, param_ty) in params {
+      if !param_hashmap.contains_key(&param_name) {
+        param_names.push(param_name.clone());
+        param_tys.push(param_ty);
         debug_assert!(
-          args_hashmap.insert(arg_name, (arg_index, arg_ty))
+          param_hashmap.insert(param_name, (param_index, param_ty))
           .is_none());
-        arg_index += 1;
+        param_index += 1;
       } else {
-        return Err(parse::ParserError::DuplicatedFunctionArgument {
-          argument: arg_name,
+        return Err(parse::ParserError::DuplicatedFunctionParameter {
+          parameter: param_name,
           function: name,
           compiler: fl!(),
         });
       }
     }
 
-    let raw = mir::Function::new(ty::Function::new(args_ty, ret_ty));
+    let raw = mir::Function::new(
+      ty::Function::new(param_tys, ret_ty),
+      param_names,
+    );
 
     Ok(Function {
       name: name,
       ret_ty: ret_ty,
-      args: args_hashmap,
+      params: param_hashmap,
       raw: raw,
     })
   }
