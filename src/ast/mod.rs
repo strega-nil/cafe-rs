@@ -27,12 +27,12 @@ impl<'t> Ast<'t> {
         Ok(Item::Function {
           name,
           ret,
-          args,
+          params,
           body,
         }) => {
           let ty = ty::Function::new(
-            args.iter().map(|&(_, t)| t).collect(), ret);
-          let f = Function::new(name.clone(), ret, args)?;
+            params.iter().map(|&(_, t)| t).collect(), ret);
+          let f = Function::new(name.clone(), ret, params)?;
           function_types.insert(name.clone(), ty);
           if let Some(_) =
               functions.insert(name.clone(), (f, body)) {
@@ -161,7 +161,7 @@ pub enum Item<'t> {
   Function {
     name: String,
     ret: Type<'t>,
-    args: Vec<(String, Type<'t>)>,
+    params: Vec<(String, Type<'t>)>,
     body: Block<'t>,
   }
 }
