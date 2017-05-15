@@ -1,4 +1,4 @@
-use mir::{self, Mir};
+use mir::{self, Mir, Binding};
 use ty;
 
 const READ_FROM_UNINIT: &'static str =
@@ -83,19 +83,22 @@ impl<'a, 't> Runner<'a, 't> {
     let mut cur_block = &func.blocks[0];
 
     let base = self.stack.len();
-    for _ in &func.locals { self.stack.push(None) }
-    let locals = func.locals
+    for _ in &func.stack_frame { self.stack.push(None) }
+    let stack_frame = func.stack_frame
       .iter()
       .enumerate()
       .map(|(i, _)| Reference(i + base))
       .collect::<Vec<_>>();
 
     loop {
-      for &mir::Statement(ref lv, ref rv) in &cur_block.statements {
-        let val = rv.to_interp_value(self, &params, &locals);
+      for stmt in &cur_block.statements {
+        /*
+        let val = rv.to_interp_value(self, &params, &stack_frame);
         match *lv {
-          Lv::Local(loc) => self.stack[locals[loc.0 as usize].0] = Some(val),
+          Lv::Local(loc) => self.stack[stack_frame[loc.0 as usize].0] = Some(val),
         }
+        */
+        unimplemented!()
       }
       match cur_block.terminator {
         Tm::Goto(mir::Block(n)) => cur_block = &func.blocks[n],
@@ -281,7 +284,7 @@ impl mir::Value {
       Vk::Literal(ref lit) => {
         lit.to_interp_value()
       },
-      Vk::Local(Local(n)) => {
+      Vk::Binding(Binding(n)) => {
         runner.stack[locals[n as usize].0]
           .clone()
           .expect(READ_FROM_UNINIT)
@@ -295,11 +298,11 @@ impl mir::Value {
       } => {
         let args = args
           .iter()
-          .map(|&mir::Local(n)| locals[n as usize])
+          .map(|&Binding(n)| locals[n as usize])
           .collect();
         runner.call(callee, args)
       },
-      Vk::Pos(Local(inner)) => {
+      Vk::Pos(Binding(inner)) => {
         match runner.stack[locals[inner as usize].0] {
           Some(Value::S8(inner)) => Value::from(inner),
           Some(Value::S16(inner)) => Value::from(inner),
@@ -313,7 +316,7 @@ impl mir::Value {
           None => panic!(READ_FROM_UNINIT),
         }
       },
-      Vk::Neg(Local(inner)) => {
+      Vk::Neg(Binding(inner)) => {
         match runner.stack[locals[inner as usize].0] {
           Some(Value::S8(inner)) => Value::from(-inner),
           Some(Value::S16(inner)) => Value::from(-inner),
@@ -329,7 +332,7 @@ impl mir::Value {
           None => panic!(READ_FROM_UNINIT),
         }
       },
-      Vk::Not(Local(inner)) => {
+      Vk::Not(Binding(inner)) => {
         match runner.stack[locals[inner as usize].0] {
           Some(Value::S8(inner)) => Value::from(!inner),
           Some(Value::S16(inner)) => Value::from(!inner),
@@ -344,55 +347,55 @@ impl mir::Value {
           None => panic!(READ_FROM_UNINIT),
         }
       },
-      Vk::Eq(Local(lhs), Local(rhs)) => {
+      Vk::Eq(Binding(lhs), Binding(rhs)) => {
         cmp!(runner[locals] => PartialEq::eq{lhs, rhs})
       },
-      Vk::Neq(Local(lhs), Local(rhs)) => {
+      Vk::Neq(Binding(lhs), Binding(rhs)) => {
         cmp!(runner[locals] => PartialEq::ne{lhs, rhs})
       },
-      Vk::Lte(Local(lhs), Local(rhs)) => {
+      Vk::Lte(Binding(lhs), Binding(rhs)) => {
         cmp!(runner[locals] => PartialOrd::le{lhs, rhs})
       },
-      Vk::Gte(Local(lhs), Local(rhs)) => {
+      Vk::Gte(Binding(lhs), Binding(rhs)) => {
         cmp!(runner[locals] => PartialOrd::ge{lhs, rhs})
       },
-      Vk::Lt(Local(lhs), Local(rhs)) => {
+      Vk::Lt(Binding(lhs), Binding(rhs)) => {
         cmp!(runner[locals] => PartialOrd::lt{lhs, rhs})
       },
-      Vk::Gt(Local(lhs), Local(rhs)) => {
+      Vk::Gt(Binding(lhs), Binding(rhs)) => {
         cmp!(runner[locals] => PartialOrd::gt{lhs, rhs})
       },
-      Vk::Add(Local(lhs), Local(rhs)) => {
+      Vk::Add(Binding(lhs), Binding(rhs)) => {
         op!(runner[locals] => Add::add{lhs, rhs})
       },
-      Vk::Sub(Local(lhs), Local(rhs)) => {
+      Vk::Sub(Binding(lhs), Binding(rhs)) => {
         op!(runner[locals] => Sub::sub{lhs, rhs})
       },
-      Vk::Mul(Local(lhs), Local(rhs)) => {
+      Vk::Mul(Binding(lhs), Binding(rhs)) => {
         op!(runner[locals] => Mul::mul{lhs, rhs})
       },
-      Vk::Div(Local(lhs), Local(rhs)) => {
+      Vk::Div(Binding(lhs), Binding(rhs)) => {
         op!(runner[locals] => Div::div{lhs, rhs})
       },
-      Vk::Rem(Local(lhs), Local(rhs)) => {
+      Vk::Rem(Binding(lhs), Binding(rhs)) => {
         op!(runner[locals] => Rem::rem{lhs, rhs})
       },
-      Vk::Shl(Local(lhs), Local(rhs)) => {
+      Vk::Shl(Binding(lhs), Binding(rhs)) => {
         shift!(runner[locals] => Shl::shl{lhs, rhs})
       },
-      Vk::Shr(Local(lhs), Local(rhs)) => {
+      Vk::Shr(Binding(lhs), Binding(rhs)) => {
         shift!(runner[locals] => Shr::shr{lhs, rhs})
       },
-      Vk::And(Local(lhs), Local(rhs)) => {
+      Vk::And(Binding(lhs), Binding(rhs)) => {
         bitop!(runner[locals] => BitAnd::bitand{lhs, rhs})
       },
-      Vk::Or(Local(lhs), Local(rhs)) => {
+      Vk::Or(Binding(lhs), Binding(rhs)) => {
         bitop!(runner[locals] => BitOr::bitor{lhs, rhs})
       },
-      Vk::Xor(Local(lhs), Local(rhs)) => {
+      Vk::Xor(Binding(lhs), Binding(rhs)) => {
         bitop!(runner[locals] => BitXor::bitxor{lhs, rhs})
       },
-      Vk::Log(Local(n)) => {
+      Vk::Log(Binding(n)) => {
         if let Some(logged) = runner.stack[locals[n as usize].0] {
           println!("{:?}", logged);
         } else {

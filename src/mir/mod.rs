@@ -11,13 +11,17 @@ const END_BLOCK: Block = Block(1);
 #[derive(Debug)]
 pub struct Function<'t> {
   ty: ty::Function<'t>,
-  locals: Vec<Type<'t>>,
+  stack_frame: Vec<Type<'t>>,
   blocks: Vec<BlockData>,
   //param_names: Vec<String>,
-  local_names: Vec<String>,
+  bindings: Vec<(Type<'t>, String)>,
 }
+
 #[derive(Copy, Clone, Debug)]
-pub struct Local(u32);
+pub struct Binding(u32);
+
+#[derive(Copy, Clone, Debug)]
+struct Local(u32);
 #[derive(Copy, Clone, Debug)]
 struct Parameter(u32);
 
@@ -25,17 +29,17 @@ impl<'t> Function<'t> {
   pub fn new(ty: ty::Function<'t>, param_names: Vec<String>) -> Self {
     let mut ret = Function {
       ty: ty,
-      locals: vec![],
+      stack_frame: vec![],
       blocks: vec![],
-      local_names: vec![],
+      bindings: vec![],
     };
     assert_eq!(
       START_BLOCK,
-      ret.new_block(Lvalue::Local(Local(0)), Terminator::Goto(END_BLOCK))
+      ret.new_block(Binding(0), Terminator::Goto(END_BLOCK))
     );
     assert_eq!(
       END_BLOCK,
-      ret.new_block(Lvalue::Local(Local(0)), Terminator::Return)
+      ret.new_block(Binding(0), Terminator::Return)
     );
     let typ = ret.ty.output();
     ret.new_local(typ, None);
@@ -47,8 +51,8 @@ impl<'t> Function<'t> {
       }
       let blk = ret.get_block(&mut START_BLOCK);
       for i in 0..input_types.len() as u32 {
-        blk.statements.push(Statement(
-          Lvalue::Local(Local(i + 1)),
+        blk.statements.push(Statement::Assign(
+          Binding(i + 1),
           Value(ValueKind::Parameter(Parameter(i)))
         ))
       }
@@ -61,19 +65,19 @@ impl<'t> Function<'t> {
     START_BLOCK
   }
 
-  fn new_block(&mut self, expr: Lvalue, term: Terminator) -> Block {
+  fn new_block(&mut self, expr: Binding, term: Terminator) -> Block {
     self.blocks.push(BlockData::new(expr, term));
     Block(self.blocks.len() - 1)
   }
-  pub fn new_local(&mut self, ty: Type<'t>, name: Option<String>) -> Local {
-    assert!(self.locals.len() < u32::max_value() as usize);
-    self.locals.push(ty);
-    self.local_names.push(name.unwrap_or("".to_owned()));
-    Local(self.locals.len() as u32 - 1)
+  pub fn new_local(&mut self, ty: Type<'t>, name: Option<String>) -> Binding {
+    assert!(self.stack_frame.len() < u32::max_value() as usize);
+    self.stack_frame.push(ty);
+    self.bindings.push((ty, name.unwrap_or("".to_owned())));
+    Binding(self.bindings.len() as u32 - 1)
   }
-  pub fn get_param_local(&mut self, n: u32) -> Local {
+  pub fn get_param_local(&mut self, n: u32) -> Binding {
     assert!(n < self.ty.input().len() as u32);
-    Local(n + 1)
+    Binding(n + 1) // TODO(ubsan): stack binding
   }
 
   fn get_block(&mut self, blk: &mut Block) -> &mut BlockData {
@@ -83,7 +87,10 @@ impl<'t> Function<'t> {
     self.ty.input()[par.0 as usize]
   }
   fn get_local_ty(&self, var: Local) -> Type<'t> {
-    self.locals[var.0 as usize]
+    self.stack_frame[var.0 as usize]
+  }
+  fn get_binding_ty(&self, var: Binding) -> Type<'t> {
+    self.bindings[var.0 as usize].0
   }
 
   fn flatten(
@@ -92,14 +99,14 @@ impl<'t> Function<'t> {
     mir: &Mir<'t>,
     block: &mut Block,
     fn_types: &HashMap<String, ty::Function<'t>>,
-  ) -> Local {
-    if let ValueKind::Local(local) = value.0 {
-      local
+  ) -> Binding {
+    if let ValueKind::Binding(bind) = value.0 {
+      bind
     } else {
       let ty = value.ty(mir, self, fn_types);
-      let loc = self.new_local(ty, None);
-      block.add_stmt(Lvalue::Local(loc), value, self);
-      loc
+      let tmp = self.new_local(ty, None);
+      block.add_assign(tmp, value, self);
+      tmp
     }
   }
 }
@@ -141,38 +148,38 @@ enum ValueKind {
   Literal(Literal),
   Parameter(Parameter),
 
-  Local(Local),
+  Binding(Binding),
 
   // -- unops --
-  Pos(Local),
-  Neg(Local),
-  Not(Local),
+  Pos(Binding),
+  Neg(Binding),
+  Not(Binding),
 
   // -- binops --
-  Add(Local, Local),
-  Sub(Local, Local),
-  Mul(Local, Local),
-  Div(Local, Local),
-  Rem(Local, Local),
-  And(Local, Local),
-  Xor(Local, Local),
-  Or(Local, Local),
-  Shl(Local, Local),
-  Shr(Local, Local),
+  Add(Binding, Binding),
+  Sub(Binding, Binding),
+  Mul(Binding, Binding),
+  Div(Binding, Binding),
+  Rem(Binding, Binding),
+  And(Binding, Binding),
+  Xor(Binding, Binding),
+  Or(Binding, Binding),
+  Shl(Binding, Binding),
+  Shr(Binding, Binding),
 
   // -- comparison --
-  Eq(Local, Local),
-  Neq(Local, Local),
-  Lt(Local, Local),
-  Lte(Local, Local),
-  Gt(Local, Local),
-  Gte(Local, Local),
+  Eq(Binding, Binding),
+  Neq(Binding, Binding),
+  Lt(Binding, Binding),
+  Lte(Binding, Binding),
+  Gt(Binding, Binding),
+  Gte(Binding, Binding),
 
   // -- other --
-  Log(Local),
+  Log(Binding),
   Call {
     callee: String,
-    args: Vec<Local>,
+    args: Vec<Binding>,
   },
 }
 
@@ -204,11 +211,11 @@ impl Value {
   #[inline(always)]
   pub fn param(arg_num: u32, function: &mut Function) -> Self {
     assert!(arg_num < function.ty.input().len() as u32);
-    Value::local(function.get_param_local(arg_num))
+    Value::binding(function.get_param_local(arg_num))
   }
   #[inline(always)]
-  pub fn local(local: Local) -> Self {
-    Value(ValueKind::Local(local))
+  pub fn binding(bind: Binding) -> Self {
+    Value(ValueKind::Binding(bind))
   }
 
   // -- unops --
@@ -492,10 +499,10 @@ impl Value {
     match self.0 {
       ValueKind::Literal(ref lit) => lit.ty(mir),
       ValueKind::Parameter(par) => function.get_param_ty(par),
-      ValueKind::Local(loc) => function.get_local_ty(loc),
+      ValueKind::Binding(bind) => function.get_binding_ty(bind),
 
       ValueKind::Pos(inner) | ValueKind::Neg(inner) | ValueKind::Not(inner)
-      => function.get_local_ty(inner),
+      => function.get_binding_ty(inner),
 
       ValueKind::Add(lhs, rhs)
       | ValueKind::Sub(lhs, rhs)
@@ -506,13 +513,13 @@ impl Value {
       | ValueKind::Xor(lhs, rhs)
       | ValueKind::Or(lhs, rhs)
       => {
-        let lhs_ty = function.get_local_ty(lhs);
-        assert_eq!(lhs_ty, function.get_local_ty(rhs));
+        let lhs_ty = function.get_binding_ty(lhs);
+        assert_eq!(lhs_ty, function.get_binding_ty(rhs));
         lhs_ty
       },
 
       ValueKind::Shl(lhs, _) | ValueKind::Shr(lhs, _)
-      => function.get_local_ty(lhs),
+      => function.get_binding_ty(lhs),
 
       ValueKind::Eq(_, _)
       | ValueKind::Neq(_, _)
@@ -549,13 +556,16 @@ impl Lvalue {
 }
 
 #[derive(Debug)]
-struct Statement(Lvalue, Value);
+enum Statement {
+  Assign(Binding, Value),
+  Bind(Binding, Lvalue),
+}
 
 #[derive(Debug)]
 enum Terminator {
   Goto(Block),
   If {
-    cond: Local,
+    cond: Binding,
     then_blk: Block,
     else_blk: Block,
   },
@@ -567,8 +577,8 @@ enum Terminator {
 pub struct Block(usize);
 
 impl Block {
-  pub fn set(&mut self, loc: Local, val: Value, function: &mut Function) {
-    self.add_stmt(Lvalue::Local(loc), val, function)
+  pub fn set(&mut self, bind: Binding, val: Value, function: &mut Function) {
+    self.add_assign(bind, val, function)
   }
 
   pub fn set_tmp<'t>(
@@ -580,18 +590,18 @@ impl Block {
   ) -> Value {
     let ty = val.ty(mir, function, fn_types);
     let tmp = function.new_local(ty, None);
-    self.add_stmt(Lvalue::Local(tmp), val, function);
-    Value::local(tmp)
+    self.add_assign(tmp, val, function);
+    Value::binding(tmp)
   }
 
-  fn add_stmt(
+  fn add_assign(
     &mut self,
-    lvalue: Lvalue,
+    binding: Binding,
     value: Value,
     function: &mut Function,
   ) {
     let blk = function.get_block(self);
-    blk.statements.push(Statement(lvalue, value))
+    blk.statements.push(Statement::Assign(binding, value))
   }
 }
 // terminators
@@ -607,10 +617,8 @@ impl Block {
     let cond = function.flatten(cond, mir, &mut self, fn_types);
     let tmp = function.new_local(ty, None);
 
-    let mut then = function.new_block(Lvalue::Local(tmp),
-      Terminator::Return);
-    let mut else_ = function.new_block(Lvalue::Local(tmp),
-      Terminator::Return);
+    let mut then = function.new_block(tmp, Terminator::Return);
+    let mut else_ = function.new_block(tmp, Terminator::Return);
     // terminator is not permanent
 
     let (expr, term) = {
@@ -634,18 +642,18 @@ impl Block {
       else_blk.terminator = Terminator::Goto(Block(join.0));
     }
 
-    (then, else_, join, Value::local(tmp))
+    (then, else_, join, Value::binding(tmp))
   }
 
   pub fn early_ret(mut self, function: &mut Function, value: Value) {
     let blk = function.get_block(&mut self);
-    blk.statements.push(Statement(Lvalue::Local(Local(0)), value));
+    blk.statements.push(Statement::Assign(Binding(0), value));
     blk.terminator = Terminator::Goto(END_BLOCK);
   }
 
   pub fn finish(mut self, function: &mut Function, value: Value) {
     let blk = function.get_block(&mut self);
-    blk.statements.push(Statement(blk.expr, value));
+    blk.statements.push(Statement::Assign(blk.expr, value));
   }
 
   fn terminate(&mut self, function: &mut Function, terminator: Terminator) {
@@ -657,13 +665,13 @@ impl Block {
 #[derive(Debug)]
 struct BlockData {
   // TODO(ubsan): remove this
-  expr: Lvalue,
+  expr: Binding,
   statements: Vec<Statement>,
   terminator: Terminator,
 }
 
 impl BlockData {
-  fn new(expr: Lvalue, terminator: Terminator) -> BlockData {
+  fn new(expr: Binding, terminator: Terminator) -> BlockData {
     BlockData {
       expr,
       statements: Vec::new(),

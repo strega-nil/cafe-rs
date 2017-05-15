@@ -7,7 +7,7 @@ use super::{
   Literal,
   Value,
   ValueKind,
-  Local,
+  Binding,
   Parameter,
 };
 use std::fmt::{Debug, Display, Formatter, Error};
@@ -16,8 +16,15 @@ struct Displayer<'a, 't, T>(&'a T, &'a Function<'t>) where 't: 'a, T: 'a;
 
 impl<'t> Display for Function<'t> {
   fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-    for (i, var) in self.locals.iter().enumerate() {
-      writeln!(f, "  let {}_{}: {};", self.local_names[i], i, var)?;
+    writeln!(f, "stack: [")?;
+    for var in &self.stack_frame {
+      writeln!(f, "  {},", var)?;
+    }
+    writeln!(f, "];")?;
+
+    writeln!(f, "bindings:")?;
+    for (n, _) in self.bindings.iter().enumerate() {
+      writeln!(f, "  {}", Displayer(&Binding(n as u32), self))?;
     }
     for (i, block) in self.blocks.iter().enumerate() {
       writeln!(f, "bb{}:", i)?;
@@ -51,18 +58,13 @@ impl<'a, 't> Display for Displayer<'a, 't, Terminator> {
 
 impl<'a, 't> Display for Displayer<'a, 't, Statement> {
   fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-    write!(f,
-      "{} = {}",
-      Displayer(&(self.0).0, self.1),
-      Displayer(&(self.0).1, self.1),
-    )
-  }
-}
-
-impl<'a, 't> Display for Displayer<'a, 't, Lvalue> {
-  fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
     match *self.0 {
-      Lvalue::Local(ref loc) => write!(f, "{}", Displayer(loc, self.1)),
+      Statement::Bind(ref bind, ref lv) => write!(f,
+        "{} := {}", Displayer(bind, self.1), Displayer(lv, self.1)
+      ),
+      Statement::Assign(ref bind, ref val) => write!(f,
+        "{} = {}", Displayer(bind, self.1), Displayer(val, self.1)
+      ),
     }
   }
 }
@@ -103,7 +105,7 @@ impl<'a, 't> Display for Displayer<'a, 't, Value> {
     match (self.0).0 {
       ValueKind::Literal(ref lit) => write!(f, "lit {}", lit),
       ValueKind::Parameter(ref par) => write!(f, "{}", par),
-      ValueKind::Local(ref loc) => write!(f, "{}", Displayer(loc, self.1)),
+      ValueKind::Binding(ref bind) => write!(f, "{}", Displayer(bind, self.1)),
       ValueKind::Pos(ref inner)
       => write!(f, "Pos({})", Displayer(inner, self.1)),
       ValueKind::Neg(ref inner)
@@ -146,15 +148,28 @@ impl<'a, 't> Display for Displayer<'a, 't, Value> {
   }
 }
 
-impl<'a, 't> Display for Displayer<'a, 't, Local> {
+impl<'a, 't> Display for Displayer<'a, 't, Lvalue> {
   fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-    write!(f, "{}_{}", (self.1).local_names[(self.0).0 as usize], (self.0).0)
+    match *self.0 {
+      Lvalue::Local(loc) => write!(f, "stack[{}]", loc.0),
+    }
+  }
+}
+
+impl<'a, 't> Display for Displayer<'a, 't, Binding> {
+  fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+    let ref nm_ty = (self.1).bindings[(self.0).0 as usize];
+    write!(f, "{}_{}: {}",
+      nm_ty.1,
+      (self.0).0,
+      nm_ty.0,
+    )
   }
 }
 
 impl Display for Parameter {
   fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-    write!(f, "par{}", self.0)
+    write!(f, "params[{}]", self.0)
   }
 }
 

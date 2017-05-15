@@ -780,7 +780,7 @@ impl<'t> Expr<'t> {
     mir: &mir::Mir<'t>,
     function: &mut Function<'t>,
     mut block: mir::Block,
-    locals: &mut HashMap<String, mir::Local>,
+    locals: &mut HashMap<String, mir::Binding>,
     fn_types: &HashMap<String, ty::Function<'t>>
   ) -> (mir::Value, Option<mir::Block>) {
     assert!(self.ty.is_final_type(), "not final type: {:?}", self);
@@ -801,7 +801,7 @@ impl<'t> Expr<'t> {
       }
       ExprKind::Variable(name) => {
         if let Some(var) = locals.get(&name) {
-          (mir::Value::local(*var), Some(block))
+          (mir::Value::binding(*var), Some(block))
         } else if let Some(&(num, _)) = function.params.get(&name) {
           (mir::Value::param(num as u32, &mut function.raw),
             Some(block))
@@ -1056,7 +1056,7 @@ impl<'t> Expr<'t> {
 
   pub fn translate_block(body: Block<'t>, mir: &mir::Mir<'t>,
       function: &mut Function<'t>, block: mir::Block,
-      locals: &mut HashMap<String, mir::Local>,
+      locals: &mut HashMap<String, mir::Binding>,
       fn_types: &HashMap<String, ty::Function<'t>>)
       -> (mir::Value, Option<mir::Block>) {
     let mut block = Some(block);

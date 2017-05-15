@@ -1029,17 +1029,17 @@ impl<'src> Parser<'src> {
 
     self.eat(Token::OpenParen, line!())?;
 
-    let mut args = Vec::new();
+    let mut params = Vec::new();
     match self.get_token()? {
-      Token::Ident(arg) => {
+      Token::Ident(param) => {
         self.eat(Token::Colon, line!())?;
-        args.push((arg, self.parse_ty(ctxt, line!())?));
+        params.push((param, self.parse_ty(ctxt, line!())?));
         loop {
           let comma_or_close_paren = self.get_token()?;
           if let Token::Comma = comma_or_close_paren {
             let name = self.parse_ident(line!())?;
             self.eat(Token::Colon, line!())?;
-            args.push((name, self.parse_ty(ctxt, line!())?));
+            params.push((name, self.parse_ty(ctxt, line!())?));
           } else if let Token::CloseParen = comma_or_close_paren {
             break;
           } else {
@@ -1076,9 +1076,9 @@ impl<'src> Parser<'src> {
 
 
     Ok(ast::Item::Function {
-      name: name,
+      name,
       ret: ret_ty,
-      args: args,
+      params,
       body: self.parse_block(ctxt)?,
     })
   }
