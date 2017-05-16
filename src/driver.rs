@@ -4,15 +4,10 @@ extern crate typed_arena;
 #[macro_use]
 mod macros;
 
-mod ast;
-mod mir;
 mod parse;
 mod ty;
 
 use std::fs::File;
-
-use ast::Ast;
-use parse::Lexer;
 
 // TODO(ubsan): unify parameter ordering
 enum Either<L, R> {
@@ -21,7 +16,7 @@ enum Either<L, R> {
 }
 
 // NOTE(ubsan): this should *not* be public
-pub enum DebugPrint {
+pub(crate) enum DebugPrint {
   Print,
   NoPrint,
 }
@@ -69,21 +64,8 @@ fn main() {
   File::open(&name).expect(&name).read_to_end(&mut file).unwrap();
   let file = String::from_utf8(file).unwrap();
 
-  let lexer = Lexer::new(&file);
+  /*
   let tyctxt = ty::TypeContext::new();
-  let ast = match Ast::create(lexer, &tyctxt) {
-    Ok(ast) => ast,
-    Err(e) => panic!("\n{:#?}", e),
-  };
-
-  let mir = match ast.typeck(print_ast) {
-    Ok(mir) => mir,
-    Err(e) => panic!("\n{:#?}", e),
-  };
-
-  if let DebugPrint::Print = print_mir {
-    println!("{}", mir);
-  }
-
-  mir.run();
+  let ast = Ast::create(&str, &tyctxt);
+  */
 }
