@@ -1,7 +1,7 @@
 use std::str;
 use parse::{Location, Spanned};
 
-pub type LexResult<T> = Result<T, LexerError>;
+pub type LexerResult<T> = Result<T, LexerError>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LexerErrorVariant {
@@ -150,7 +150,7 @@ impl<'src> Lexer<'src> {
     }
   }
 
-  fn block_comment(&mut self, loc: Location) -> LexResult<()> {
+  fn block_comment(&mut self, loc: Location) -> LexerResult<()> {
     let unclosed_err = Err(Spanned {
       thing: LexerErrorVariant::UnclosedComment,
       start: loc,
@@ -190,7 +190,7 @@ impl<'src> Lexer<'src> {
     }
   }
 
-  pub fn next_token(&mut self) -> LexResult<Token> {
+  pub fn next_token(&mut self) -> LexerResult<Token> {
     self.eat_whitespace();
     let (first, loc) = match self.getc() {
       Some(c) => c,

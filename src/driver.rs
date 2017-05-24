@@ -5,17 +5,14 @@ extern crate typed_arena;
 mod macros;
 
 mod parse;
+mod ast;
+#[allow(dead_code)]
 mod ty;
 
 use std::fs::File;
 
-// TODO(ubsan): unify parameter ordering
-enum Either<L, R> {
-  Left(L),
-  Right(R),
-}
+use ast::Ast;
 
-// NOTE(ubsan): this should *not* be public
 pub(crate) enum DebugPrint {
   Print,
   NoPrint,
@@ -38,7 +35,7 @@ fn main() {
 
     let mut ap = ArgumentParser::new();
     ap.set_description("\
-      The pinkc compiler for the pink language.\n\
+      The tc compiler for tal.\n\
       Written in Rust.\
     "); ap.refer(&mut name).required().add_argument(
       "name", Store, "The file to compile"
@@ -55,8 +52,8 @@ fn main() {
     ap.parse_args_or_exit();
   }
 
-  let print_ast = DebugPrint::from(print_ast);
-  let print_mir = DebugPrint::from(print_mir);
+  let _print_ast = DebugPrint::from(print_ast);
+  let _print_mir = DebugPrint::from(print_mir);
 
   //let output = output.unwrap_or(get_output_from_name(&name));
 
@@ -64,8 +61,6 @@ fn main() {
   File::open(&name).expect(&name).read_to_end(&mut file).unwrap();
   let file = String::from_utf8(file).unwrap();
 
-  /*
-  let tyctxt = ty::TypeContext::new();
-  let ast = Ast::create(&str, &tyctxt);
-  */
+  let ast = Ast::new(&file);
+  ast.print();
 }
