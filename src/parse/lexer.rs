@@ -12,10 +12,16 @@ pub enum LexerErrorVariant {
 }
 pub type LexerError = Spanned<LexerErrorVariant>;
 
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ItemToken {
+  KeywordFn,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenVariant {
   // Item
-  KeywordFn,
+  Item(ItemToken),
 
   // Braces
   OpenBrace,
@@ -270,7 +276,7 @@ impl<'src> Lexer<'src> {
           }
         }
         let tok = if ident == "fn" {
-          TokenVariant::KeywordFn
+          TokenVariant::Item(ItemToken::KeywordFn)
         } else if ident == "if" {
           TokenVariant::KeywordIf
         } else if ident == "else" {

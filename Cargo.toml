@@ -1,14 +1,13 @@
 [package]
-name = "pinkc"
+name = "cafe"
 version = "0.1.0"
-authors = ["Nicholas Mazzuca <npmazzuca@gmail.com>"]
+authors = ["Nicole Mazzuca <npmazzuca@gmail.com>"]
 
 [[bin]]
-name = "pinkc"
+name = "cafe"
 path = "src/driver.rs"
 
 [dependencies]
 #llvm-sys = "38"
 argparse = "0.2.1"
-libc = "0.2.7"
 typed-arena = "1.1.0"

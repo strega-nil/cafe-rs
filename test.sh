@@ -1,5 +1,5 @@
 #! /bin/sh
-cargo run -- --print-mir src/test/test.tal || \
+cargo run -- --print-mir src/test/test.cf || \
   echo "failure to compile : " $? && exit
 #cc test.o -o test || echo "failure to link" && exit
 #rm test.o || echo "failure to remove" && exit

@@ -1,6 +1,13 @@
 pub mod lexer;
 
-use self::lexer::{Lexer, Token, TokenVariant, LexerError, LexerErrorVariant};
+use self::lexer::{
+  Lexer,
+  LexerError,
+  LexerErrorVariant,
+  Token,
+  TokenVariant,
+  ItemToken,
+};
 
 use std::str;
 
@@ -35,6 +42,18 @@ pub struct Spanned<T> {
   pub end: Option<Location>,
 }
 
+impl<T> Spanned<T> {
+  fn map<U, F>(self, f: F) -> Spanned<U>
+    where F: Fn(T) -> U
+  {
+    Spanned {
+      thing: f(self.thing),
+      start: self.start,
+      end: self.end,
+    }
+  }
+}
+
 #[derive(Debug)]
 pub enum Expression {
   IntLiteral(u64),
@@ -66,14 +85,21 @@ pub struct Item_ {
 }
 pub type Item = Spanned<Item_>;
 
+#[derive(Copy, Clone, Debug)]
+pub enum ExpectedToken {
+  Ident,
+  Colon,
+  Item,
+}
+
 #[derive(Debug)]
 pub enum ParserErrorVariant {
   ExpectedEof, // not an error
 
   LexerError(LexerErrorVariant),
   UnexpectedToken {
-    found: Token,
-    expected: (), // TODO(ubsan): figure out what this should be
+    found: TokenVariant,
+    expected: ExpectedToken,
   },
 }
 pub type ParserError = Spanned<ParserErrorVariant>;
@@ -87,12 +113,25 @@ impl From<LexerError> for ParserError {
     }
   }
 }
-
 pub type ParserResult<T> = Result<T, ParserError>;
 
 pub struct Parser<'src> {
   lexer: Lexer<'src>,
   lookahead: Option<Token>,
+}
+
+macro_rules! unexpected_token {
+  ($tok:expr, $expected:ident, $start:expr, $end:expr) => ({
+    let thing = ParserErrorVariant::UnexpectedToken {
+      found: $tok,
+      expected: ExpectedToken::$expected,
+    };
+    Err(Spanned {
+      thing,
+      start: $start,
+      end: $end,
+    })
+  });
 }
 
 impl<'src> Parser<'src> {
@@ -122,7 +161,39 @@ impl<'src> Parser<'src> {
     }
   }
 
+  // TODO(ubsan): maybe should return a ParserResult<Spanned<String>>?
+  fn tok_ident(&mut self) -> ParserResult<String> {
+    let Spanned { thing, start, end } = self.get_token()?;
+    match thing {
+      TokenVariant::Ident(s) => Ok(s),
+      tok => unexpected_token!(tok, Ident, start, end),
+    }
+  }
+
+  fn tok_colon(&mut self) -> ParserResult<()> {
+    let Spanned { thing, start, end } = self.get_token()?;
+    match thing {
+      TokenVariant::Colon => Ok(()),
+      tok => unexpected_token!(tok, Colon, start, end),
+    }
+  }
+
+  fn tok_item_kind(&mut self) -> ParserResult<ItemToken> {
+    let Spanned { thing, start, end } = self.get_token()?;
+    match thing {
+      TokenVariant::Item(item) => Ok(item),
+      tok => unexpected_token!(tok, Item, start, end),
+    }
+  }
+
   pub fn next_item(&mut self) -> ParserResult<Item> {
-    unimplemented!()
+    let name = self.tok_ident()?;
+    self.tok_colon()?;
+    /*
+      parse type parameters here
+    */
+    match self.tok_item_kind()? {
+      ItemToken::KeywordFn => unimplemented!(),
+    }
   }
 }
