@@ -37,7 +37,8 @@ fn main() {
     ap.set_description("\
       The tc compiler for tal.\n\
       Written in Rust.\
-    "); ap.refer(&mut name).required().add_argument(
+    ");
+    ap.refer(&mut name).required().add_argument(
       "name", Store, "The file to compile"
     );
     ap.refer(&mut print_ast).add_option(

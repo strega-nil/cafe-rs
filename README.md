@@ -1,5 +1,3 @@
-The Affine Language
+Café
 ---
-Based on the prior compiler for the pink language.
-
-An attempt to bring dependent typing to systems programming.
+A fun language experiment
