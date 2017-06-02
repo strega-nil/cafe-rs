@@ -1,7 +1,5 @@
-main: fn() {
+main: fn() -> i32 {
 }
-
-foo: fn() { }
 
 /*
 main :: fn() {

@@ -7,7 +7,7 @@ pub type LexerResult<T> = Result<T, LexerError>;
 pub enum LexerErrorVariant {
   IdentAfterIntLiteral,
   UnclosedComment,
-  UnknownToken(&'static str),
+  ReservedToken(&'static str),
   UnknownChar(char),
 }
 pub type LexerError = Spanned<LexerErrorVariant>;
@@ -31,8 +31,12 @@ pub enum TokenVariant {
   Ident(String),
   Integer(u64),
 
-  Unop(Unop),
-  Binop(Binop),
+  Plus,
+  Minus,
+  Star,
+  And,
+
+  LessThanEquals,
 
   // Declaration/Types/Assignment
   Colon,
@@ -48,25 +52,6 @@ pub enum TokenVariant {
   Eof,
 }
 pub type Token = Spanned<TokenVariant>;
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Binop {
-  Plus,
-  LessThanEquals,
-}
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Unop {
-  Minus,
-}
-
-impl Binop {
-  pub fn precedence(&self) -> u8 {
-    match *self {
-      Binop::Plus => 8,
-      Binop::LessThanEquals => 3,
-    }
-  }
-}
 
 impl Location {
   fn new() -> Self {
@@ -214,13 +199,34 @@ impl<'src> Lexer<'src> {
         _ => Ok(span!(TokenVariant::Colon, loc))
       },
       ',' => Ok(span!(TokenVariant::Comma, loc)),
-      '+' => Ok(span!(TokenVariant::Binop(Binop::Plus), loc)),
+      '&' => match self.peekc() {
+        Some(('&', end_loc)) =>
+          Err(span!(LexerErrorVariant::ReservedToken("&&"), loc, end_loc)),
+        Some(('=', end_loc)) =>
+          Err(span!(LexerErrorVariant::ReservedToken("&="), loc, end_loc)),
+        _ => Ok(span!(TokenVariant::And, loc)),
+      },
+      '+' => match self.peekc() {
+        // eventually, concat operator
+        Some(('+', end_loc)) =>
+          Err(span!(LexerErrorVariant::ReservedToken("++"), loc, end_loc)),
+        Some(('=', end_loc)) =>
+          Err(span!(LexerErrorVariant::ReservedToken("+="), loc, end_loc)),
+        _ => Ok(span!(TokenVariant::Plus, loc)),
+      },
       '-' => match self.peekc() {
         Some(('>', end_loc)) => {
           self.getc();
           Ok(span!(TokenVariant::SkinnyArrow, loc, end_loc))
         },
-        _ => Err(span!(LexerErrorVariant::UnknownToken("-"), loc)),
+        Some(('=', end_loc)) =>
+          Err(span!(LexerErrorVariant::ReservedToken("-="), loc, end_loc)),
+        _ => Ok(span!(TokenVariant::Minus, loc)),
+      },
+      '*' => match self.peekc() {
+        Some(('=', end_loc)) =>
+          Err(span!(LexerErrorVariant::ReservedToken("*="), loc, end_loc)),
+        _ => Ok(span!(TokenVariant::Star, loc)),
       },
       '/' => match self.peekc() {
         Some(('*', _)) => {
@@ -233,21 +239,21 @@ impl<'src> Lexer<'src> {
           self.line_comment();
           self.next_token()
         },
-        _ => Err(span!(LexerErrorVariant::UnknownToken("/"), loc)),
+        _ => Err(span!(LexerErrorVariant::ReservedToken("/"), loc)),
       },
 
       '<' => match self.peekc() {
         Some(('=', end_loc)) => {
           self.getc();
-          Ok(span!(TokenVariant::Binop(Binop::LessThanEquals), loc, end_loc))
+          Ok(span!(TokenVariant::LessThanEquals, loc, end_loc))
         },
-        _ => Err(span!(LexerErrorVariant::UnknownToken("<"), loc)),
+        _ => Err(span!(LexerErrorVariant::ReservedToken("<"), loc)),
       },
       '=' => {
         match self.peekc() {
           Some(('=', end_loc)) => {
             self.getc();
-            Err(span!(LexerErrorVariant::UnknownToken("=="), loc, end_loc))
+            Err(span!(LexerErrorVariant::ReservedToken("=="), loc, end_loc))
           },
           _ => Ok(span!(TokenVariant::Equals, loc, loc)),
         }

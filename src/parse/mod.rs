@@ -10,7 +10,25 @@ use self::lexer::{
 
 use std::str;
 
-//use ty::{self, Type, TypeContext};
+
+#[derive(Clone, Debug)]
+pub enum Category {
+  Raw,
+  Shared,
+  Mut,
+  Out,
+  Move,
+}
+// user defined types will be strings
+#[derive(Clone, Debug)]
+pub enum StringlyType {
+  Tuple(Vec<StringlyType>),
+  #[allow(dead_code)]
+  Reference(Category, Box<StringlyType>),
+  #[allow(dead_code)]
+  Pointer(Category, Box<StringlyType>),
+  UserDefinedType(String),
+}
 
 #[derive(Copy, Clone, Debug)]
 pub struct Location {
@@ -42,16 +60,6 @@ pub struct Spanned<T> {
 }
 
 impl<T> Spanned<T> {
-  fn map<U, F>(self, f: F) -> Spanned<U>
-    where F: Fn(T) -> U
-  {
-    Spanned {
-      thing: f(self.thing),
-      start: self.start,
-      end: self.end,
-    }
-  }
-
   fn new(thing: T, start: Location, end: Option<Location>) -> Self {
     Spanned {
       thing,
@@ -81,7 +89,7 @@ type Block = Spanned<Block_>;
 pub enum ItemVariant {
   Function {
     params: Vec<(String, String)>,
-    ret_ty: String,
+    ret_ty: StringlyType,
     blk: Block_,
   },
 }
@@ -96,8 +104,8 @@ pub type Item = Spanned<Item_>;
 #[derive(Clone, Debug)]
 pub enum ExpectedToken {
   Ident,
-  Colon,
   Item,
+  Type,
   SpecificToken(TokenVariant),
 }
 
@@ -181,6 +189,15 @@ macro_rules! eat_token {
   );
 }
 
+macro_rules! maybe_eat_token {
+  ($slf:expr, $tok:ident) => ({
+    match $slf.peek_token()? {
+      &Spanned { thing: TokenVariant::$tok, .. } => Some($slf.get_token()?),
+      _ => None,
+    }
+  });
+}
+
 impl<'src> Parser<'src> {
   pub fn new(file: &'src str) -> Self {
     Parser {
@@ -217,6 +234,24 @@ impl<'src> Parser<'src> {
     }
   }
 
+  fn parse_type(&mut self) -> ParserResult<StringlyType> {
+    let Spanned { thing, start, end } = self.get_token()?;
+    match thing {
+      TokenVariant::Ident(s) => Ok(StringlyType::UserDefinedType(s)),
+      TokenVariant::And => unimplemented!(),
+      TokenVariant::Star => unimplemented!(),
+      TokenVariant::OpenParen => unimplemented!(),
+      tok => Err(Spanned {
+        thing: ParserErrorVariant::UnexpectedToken {
+          found: tok,
+          expected: ExpectedToken::Type,
+        },
+        start,
+        end,
+      }),
+    }
+  }
+
   fn parse_block(&mut self) -> ParserResult<Block> {
     let sp_start = eat_token!(self, OpenBrace);
     // statements
@@ -235,10 +270,15 @@ impl<'src> Parser<'src> {
         let start = eat_token!(self, OpenParen);
         // argument list
         eat_token!(self, CloseParen);
+        let ret_ty = if let Some(_) = maybe_eat_token!(self, SkinnyArrow) {
+          self.parse_type()?
+        } else {
+          StringlyType::Tuple(vec![])
+        };
         let blk = self.parse_block()?;
         let thing = ItemVariant::Function {
           params: vec![],
-          ret_ty: String::from(""),
+          ret_ty,
           blk: blk.thing,
         };
         Ok(Spanned::new(thing, start.start, blk.end))
