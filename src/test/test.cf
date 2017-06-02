@@ -1,6 +1,7 @@
-main: fn() -> s32 {
-  0
+main: fn() {
 }
+
+foo: fn() { }
 
 /*
 main :: fn() {

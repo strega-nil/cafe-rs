@@ -6,7 +6,6 @@ use self::lexer::{
   LexerErrorVariant,
   Token,
   TokenVariant,
-  ItemToken,
 };
 
 use std::str;
@@ -52,6 +51,14 @@ impl<T> Spanned<T> {
       end: self.end,
     }
   }
+
+  fn new(thing: T, start: Location, end: Option<Location>) -> Self {
+    Spanned {
+      thing,
+      start,
+      end,
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -64,32 +71,34 @@ pub enum Statement {
 }
 
 #[derive(Debug)]
-pub struct Block {
+pub struct Block_ {
   statements: Vec<Statement>,
   expr: Option<Expression>,
 }
+type Block = Spanned<Block_>;
 
 #[derive(Debug)]
 pub enum ItemVariant {
-  Function{
+  Function {
     params: Vec<(String, String)>,
     ret_ty: String,
-    blk: Block,
+    blk: Block_,
   },
 }
 
 #[derive(Debug)]
 pub struct Item_ {
   name: String,
-  variant: ItemVariant,
+  definition: ItemVariant,
 }
 pub type Item = Spanned<Item_>;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum ExpectedToken {
   Ident,
   Colon,
   Item,
+  SpecificToken(TokenVariant),
 }
 
 #[derive(Debug)]
@@ -134,6 +143,44 @@ macro_rules! unexpected_token {
   });
 }
 
+macro_rules! allow_eof {
+  ($tok:expr) => (
+    match $tok {
+      t @ Ok(_) => t,
+      Err(sp) => {
+        let Spanned { thing, start, end } = sp;
+        match thing {
+          ParserErrorVariant::UnexpectedToken {
+            found: TokenVariant::Eof,
+            ..
+          } => Err(Spanned {
+            thing: ParserErrorVariant::ExpectedEof,
+            start,
+            end,
+          }),
+          thing => Err(Spanned { thing, start, end }),
+        }
+      },
+    }
+  )
+}
+
+macro_rules! eat_token {
+  ($slf:expr, $tok:ident) => (
+    match $slf.get_token()? {
+      s @ Spanned { thing: TokenVariant::$tok, .. } => s,
+      Spanned { thing, start, end } => return Err(Spanned {
+        thing: ParserErrorVariant::UnexpectedToken {
+          found: thing,
+          expected: ExpectedToken::SpecificToken(TokenVariant::$tok),
+        },
+        start,
+        end,
+      }),
+    }
+  );
+}
+
 impl<'src> Parser<'src> {
   pub fn new(file: &'src str) -> Self {
     Parser {
@@ -162,7 +209,7 @@ impl<'src> Parser<'src> {
   }
 
   // TODO(ubsan): maybe should return a ParserResult<Spanned<String>>?
-  fn tok_ident(&mut self) -> ParserResult<String> {
+  fn parse_ident(&mut self) -> ParserResult<String> {
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
       TokenVariant::Ident(s) => Ok(s),
@@ -170,30 +217,48 @@ impl<'src> Parser<'src> {
     }
   }
 
-  fn tok_colon(&mut self) -> ParserResult<()> {
-    let Spanned { thing, start, end } = self.get_token()?;
-    match thing {
-      TokenVariant::Colon => Ok(()),
-      tok => unexpected_token!(tok, Colon, start, end),
-    }
+  fn parse_block(&mut self) -> ParserResult<Block> {
+    let sp_start = eat_token!(self, OpenBrace);
+    // statements
+    let sp_end = eat_token!(self, CloseBrace);
+    let thing = Block_ {
+      statements: vec![],
+      expr: None,
+    };
+    Ok(Spanned::new(thing, sp_start.start, sp_end.end))
   }
 
-  fn tok_item_kind(&mut self) -> ParserResult<ItemToken> {
+  fn parse_item_definition(&mut self) -> ParserResult<Spanned<ItemVariant>> {
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
-      TokenVariant::Item(item) => Ok(item),
+      TokenVariant::KeywordFn => {
+        let start = eat_token!(self, OpenParen);
+        // argument list
+        eat_token!(self, CloseParen);
+        let blk = self.parse_block()?;
+        let thing = ItemVariant::Function {
+          params: vec![],
+          ret_ty: String::from(""),
+          blk: blk.thing,
+        };
+        Ok(Spanned::new(thing, start.start, blk.end))
+      },
       tok => unexpected_token!(tok, Item, start, end),
     }
   }
 
   pub fn next_item(&mut self) -> ParserResult<Item> {
-    let name = self.tok_ident()?;
-    self.tok_colon()?;
+    let name = allow_eof!(self.parse_ident())?;
+    let sp = eat_token!(self, Colon);
     /*
       parse type parameters here
     */
-    match self.tok_item_kind()? {
-      ItemToken::KeywordFn => unimplemented!(),
-    }
+    let def = self.parse_item_definition()?;
+
+    let thing = Item_ {
+      name,
+      definition: def.thing,
+    };
+    Ok(Spanned::new(thing, sp.start, def.end))
   }
 }
