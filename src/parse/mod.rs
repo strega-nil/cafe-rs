@@ -124,6 +124,7 @@ pub enum ExpectedToken {
   Ident,
   Item,
   Type,
+  ExprEnd,
   SpecificToken(TokenVariant),
 }
 
@@ -288,24 +289,23 @@ impl<'src> Parser<'src> {
       Spanned { thing: TokenVariant::KeywordLet, .. } => unimplemented!(),
       _ => {
         let expr = self.parse_expr()?;
-        match *self.peek_token()? {
-          Spanned { thing: TokenVariant::CloseBrace, .. } =>
-            return Ok(ExprOrStmt::Expr(expr)),
+        if let Spanned { thing: TokenVariant::CloseBrace, .. } =
+          *self.peek_token()?
+        {
+          return Ok(ExprOrStmt::Expr(expr))
+        }
+
+        match self.get_token()? {
           Spanned { thing: TokenVariant::Semicolon, end, .. } => {
-            self.get_token()?;
             let start = expr.start;
             return Ok(ExprOrStmt::Stmt(
               Spanned::new(StatementVariant::Expr(expr), start, end),
             ));
           },
-          _ => {}
+          Spanned { thing, start, end } =>
+            unexpected_token!(thing, ExprEnd, start, end),
         }
         // argh borrowing
-        let Spanned { ref thing, end, .. } = *self.peek_token()?;
-        panic!(
-          "weird expression end: {:?}",
-          Spanned::new(thing, expr.start, end)
-        );
       }
     }
   }
