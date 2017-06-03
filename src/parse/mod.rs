@@ -290,19 +290,22 @@ impl<'src> Parser<'src> {
         let expr = self.parse_expr()?;
         match *self.peek_token()? {
           Spanned { thing: TokenVariant::CloseBrace, .. } =>
-            Ok(ExprOrStmt::Expr(expr)),
+            return Ok(ExprOrStmt::Expr(expr)),
           Spanned { thing: TokenVariant::Semicolon, end, .. } => {
+            self.get_token()?;
             let start = expr.start;
-            Ok(ExprOrStmt::Stmt(
+            return Ok(ExprOrStmt::Stmt(
               Spanned::new(StatementVariant::Expr(expr), start, end),
-            ))
+            ));
           },
-          Spanned { ref thing, end, .. } =>
-            panic!(
-              "weird expression end: {:?}",
-              Spanned::new(thing, expr.start, end),
-            ),
+          _ => {}
         }
+        // argh borrowing
+        let Spanned { ref thing, end, .. } = *self.peek_token()?;
+        panic!(
+          "weird expression end: {:?}",
+          Spanned::new(thing, expr.start, end)
+        );
       }
     }
   }
