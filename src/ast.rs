@@ -15,7 +15,7 @@ impl Ast {
           thing: ParserErrorVariant::ExpectedEof,
           ..
         }) => break,
-        Err(e) => panic!("error: {:?}", e),
+        Err(e) => panic!("error: {:#?}", e),
       }
     }
     Ast {

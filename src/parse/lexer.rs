@@ -23,6 +23,9 @@ pub enum TokenVariant {
   OpenParen,
   CloseParen,
 
+  // Statement
+  KeywordLet,
+
   // Expression
   KeywordTrue,
   KeywordFalse,
@@ -53,14 +56,6 @@ pub enum TokenVariant {
 }
 pub type Token = Spanned<TokenVariant>;
 
-impl Location {
-  fn new() -> Self {
-    Location {
-      line: 1,
-      column: 1,
-    }
-  }
-}
 
 pub struct Lexer<'src> {
   src: str::Chars<'src>,
@@ -143,7 +138,7 @@ impl<'src> Lexer<'src> {
     });
     loop {
       let c = self.getc();
-      if let Some(('*', loc)) = c {
+      if let Some(('*', _)) = c {
         let c = self.getc();
         if let Some(('/', _)) = c {
           return Ok(());
@@ -277,6 +272,8 @@ impl<'src> Lexer<'src> {
         }
         let tok = if ident == "fn" {
           TokenVariant::KeywordFn
+        } else if ident == "let" {
+          TokenVariant::KeywordLet
         } else if ident == "if" {
           TokenVariant::KeywordIf
         } else if ident == "else" {

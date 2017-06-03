@@ -12,6 +12,7 @@ use std::str;
 
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum Category {
   Raw,
   Shared,
@@ -37,6 +38,13 @@ pub struct Location {
 }
 
 impl Location {
+  fn new() -> Self {
+    Location {
+      line: 1,
+      column: 0,
+    }
+  }
+
   fn next_char(self) -> Self {
     Location {
       column: self.column + 1,
@@ -46,7 +54,7 @@ impl Location {
 
   fn next_line(self) -> Self {
     Location {
-      column: 1,
+      column: 0,
       line: self.line + 1,
     }
   }
@@ -70,18 +78,28 @@ impl<T> Spanned<T> {
 }
 
 #[derive(Debug)]
-pub enum Expression {
+pub enum ExpressionVariant {
+  Nullary,
   IntLiteral(u64),
 }
+type Expression = Spanned<ExpressionVariant>;
 #[derive(Debug)]
-pub enum Statement {
+pub enum StatementVariant {
   Expr(Expression),
 }
+type Statement = Spanned<StatementVariant>;
+
+enum ExprOrStmt {
+  Expr(Expression),
+  Stmt(Statement),
+}
+
+
 
 #[derive(Debug)]
 pub struct Block_ {
   statements: Vec<Statement>,
-  expr: Option<Expression>,
+  expr: Expression,
 }
 type Block = Spanned<Block_>;
 
@@ -252,13 +270,61 @@ impl<'src> Parser<'src> {
     }
   }
 
+  fn parse_expr(&mut self) -> ParserResult<Expression> {
+    match *self.peek_token()? {
+        Spanned { thing: TokenVariant::Semicolon, start, .. }
+      | Spanned { thing: TokenVariant::CloseBrace, start, .. }
+      => Ok(Spanned::new(ExpressionVariant::Nullary, start, Some(start))),
+      _ => match self.get_token()? {
+        Spanned { thing: TokenVariant::Integer(u), start, end } =>
+          Ok(Spanned::new(ExpressionVariant::IntLiteral(u), start, end)),
+        tok => panic!("unimplemented expression: {:?}", tok),
+      },
+    }
+  }
+
+  fn parse_expr_or_stmt(&mut self) -> ParserResult<ExprOrStmt> {
+    match *self.peek_token()? {
+      Spanned { thing: TokenVariant::KeywordLet, .. } => unimplemented!(),
+      _ => {
+        let expr = self.parse_expr()?;
+        match *self.peek_token()? {
+          Spanned { thing: TokenVariant::CloseBrace, .. } =>
+            Ok(ExprOrStmt::Expr(expr)),
+          Spanned { thing: TokenVariant::Semicolon, end, .. } => {
+            let start = expr.start;
+            Ok(ExprOrStmt::Stmt(
+              Spanned::new(StatementVariant::Expr(expr), start, end),
+            ))
+          },
+          Spanned { ref thing, end, .. } =>
+            panic!(
+              "weird expression end: {:?}",
+              Spanned::new(thing, expr.start, end),
+            ),
+        }
+      }
+    }
+  }
+
   fn parse_block(&mut self) -> ParserResult<Block> {
+    let mut statements = vec![];
+    let expr;
+
     let sp_start = eat_token!(self, OpenBrace);
-    // statements
+    loop {
+      match self.parse_expr_or_stmt()? {
+        ExprOrStmt::Expr(e) => {
+          expr = e;
+          break;
+        },
+        ExprOrStmt::Stmt(s) => statements.push(s),
+      }
+    }
     let sp_end = eat_token!(self, CloseBrace);
     let thing = Block_ {
-      statements: vec![],
-      expr: None,
+      statements,
+      expr,
     };
     Ok(Spanned::new(thing, sp_start.start, sp_end.end))
   }
