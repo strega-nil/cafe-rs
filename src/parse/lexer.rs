@@ -1,3 +1,9 @@
+extern crate unicode_normalization;
+use self::unicode_normalization::{
+  UnicodeNormalization,
+  Recompositions,
+};
+
 use std::str;
 use parse::{Location, Spanned};
 
@@ -63,7 +69,7 @@ pub type Token = Spanned<TokenVariant>;
 
 
 pub struct Lexer<'src> {
-  src: str::Chars<'src>,
+  src: Recompositions<str::Chars<'src>>,
   lookahead: Option<char>,
   current_loc: Location,
 }
@@ -71,12 +77,14 @@ pub struct Lexer<'src> {
 impl<'src> Lexer<'src> {
   pub fn new(src: &str) -> Lexer {
     Lexer {
-      src: src.chars(),
+      src: src.nfc(),
       lookahead: None,
       current_loc: Location::new(),
     }
   }
 
+  // NOTE(ubsan): when I start allowing unicode identifiers,
+  // NORMALIZE
   #[inline]
   fn is_start_of_ident(c: char) -> bool {
     (c >= 'a' && c <= 'z')

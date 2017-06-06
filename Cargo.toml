@@ -9,5 +9,6 @@ path = "src/driver.rs"
 
 [dependencies]
 #llvm-sys = "38"
+unicode-normalization = "0.1.4"
 argparse = "0.2.1"
 typed-arena = "1.1.0"
