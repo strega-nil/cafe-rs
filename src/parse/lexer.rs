@@ -383,10 +383,9 @@ impl<'src> Lexer<'src> {
         }
         let value = string
           .parse::<u64>()
-          .expect("\
-            we pushed something which wasn't \
-            0...9 onto a string\
-          ");
+          .expect(
+            "we pushed something which wasn't 0...9 onto a string",
+          );
 
         Ok(span!(
           TokenVariant::Integer(value),

@@ -37,7 +37,7 @@ fn main() {
 
     let mut ap = ArgumentParser::new();
     ap.set_description("\
-      The tc compiler for tal.\n\
+      The compiler for café.\n\
       Written in Rust.\
     ");
     ap.refer(&mut name).required().add_argument(
