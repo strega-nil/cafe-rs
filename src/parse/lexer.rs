@@ -17,6 +17,11 @@ pub enum TokenVariant {
   // Item
   KeywordFn,
 
+  // Categories
+  KeywordRaw,
+  KeywordMut,
+  KeywordOwn,
+
   // Braces
   OpenBrace,
   CloseBrace,
@@ -74,7 +79,9 @@ impl<'src> Lexer<'src> {
 
   #[inline]
   fn is_start_of_ident(c: char) -> bool {
-    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+    (c >= 'a' && c <= 'z')
+    || (c >= 'A' && c <= 'Z')
+    || c == '_'
   }
 
   #[inline]
@@ -124,13 +131,17 @@ impl<'src> Lexer<'src> {
   fn eat_whitespace(&mut self) {
     loop {
       match self.peekc() {
-        Some((c, _)) if Self::is_whitespace(c) => { self.getc(); },
+        Some((c, _))
+        if Self::is_whitespace(c)
+        => { self.getc(); },
         _ => break,
       }
     }
   }
 
-  fn block_comment(&mut self, loc: Location) -> LexerResult<()> {
+  fn block_comment(
+    &mut self, loc: Location,
+  ) -> LexerResult<()> {
     let unclosed_err = Err(Spanned {
       thing: LexerErrorVariant::UnclosedComment,
       start: loc,
@@ -174,7 +185,11 @@ impl<'src> Lexer<'src> {
     self.eat_whitespace();
     let (first, loc) = match self.getc() {
       Some(c) => c,
-      None => return Ok(span!(TokenVariant::Eof, self.current_loc)),
+      None => {
+        return Ok(
+          span!(TokenVariant::Eof, self.current_loc)
+        );
+      },
     };
     match first {
       '(' => Ok(span!(TokenVariant::OpenParen, loc)),
@@ -195,18 +210,38 @@ impl<'src> Lexer<'src> {
       },
       ',' => Ok(span!(TokenVariant::Comma, loc)),
       '&' => match self.peekc() {
-        Some(('&', end_loc)) =>
-          Err(span!(LexerErrorVariant::ReservedToken("&&"), loc, end_loc)),
-        Some(('=', end_loc)) =>
-          Err(span!(LexerErrorVariant::ReservedToken("&="), loc, end_loc)),
+        Some(('&', end_loc)) => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("&&"),
+            loc,
+            end_loc,
+          ))
+        },
+        Some(('=', end_loc)) => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("&="),
+            loc,
+            end_loc,
+          ))
+        },
         _ => Ok(span!(TokenVariant::And, loc)),
       },
       '+' => match self.peekc() {
         // eventually, concat operator
-        Some(('+', end_loc)) =>
-          Err(span!(LexerErrorVariant::ReservedToken("++"), loc, end_loc)),
-        Some(('=', end_loc)) =>
-          Err(span!(LexerErrorVariant::ReservedToken("+="), loc, end_loc)),
+        Some(('+', end_loc)) => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("++"),
+            loc,
+            end_loc,
+          )),
+        }
+        Some(('=', end_loc)) => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("+="),
+            loc,
+            end_loc,
+          )),
+        }
         _ => Ok(span!(TokenVariant::Plus, loc)),
       },
       '-' => match self.peekc() {
@@ -214,13 +249,23 @@ impl<'src> Lexer<'src> {
           self.getc();
           Ok(span!(TokenVariant::SkinnyArrow, loc, end_loc))
         },
-        Some(('=', end_loc)) =>
-          Err(span!(LexerErrorVariant::ReservedToken("-="), loc, end_loc)),
+        Some(('=', end_loc)) => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("-="),
+            loc,
+            end_loc,
+          ))
+        }
         _ => Ok(span!(TokenVariant::Minus, loc)),
       },
       '*' => match self.peekc() {
-        Some(('=', end_loc)) =>
-          Err(span!(LexerErrorVariant::ReservedToken("*="), loc, end_loc)),
+        Some(('=', end_loc)) => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("*="),
+            loc,
+            end_loc,
+          ))
+        }
         _ => Ok(span!(TokenVariant::Star, loc)),
       },
       '/' => match self.peekc() {
@@ -234,21 +279,39 @@ impl<'src> Lexer<'src> {
           self.line_comment();
           self.next_token()
         },
-        _ => Err(span!(LexerErrorVariant::ReservedToken("/"), loc)),
+        _ => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("/"),
+            loc,
+          ))
+        },
       },
 
       '<' => match self.peekc() {
         Some(('=', end_loc)) => {
           self.getc();
-          Ok(span!(TokenVariant::LessThanEquals, loc, end_loc))
+          Ok(span!(
+            TokenVariant::LessThanEquals,
+            loc,
+            end_loc,
+          ))
         },
-        _ => Err(span!(LexerErrorVariant::ReservedToken("<"), loc)),
+        _ => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("<"),
+            loc,
+          ))
+        },
       },
       '=' => {
         match self.peekc() {
           Some(('=', end_loc)) => {
             self.getc();
-            Err(span!(LexerErrorVariant::ReservedToken("=="), loc, end_loc))
+            Err(span!(
+              LexerErrorVariant::ReservedToken("=="),
+              loc,
+              end_loc,
+            ))
           },
           _ => Ok(span!(TokenVariant::Equals, loc, loc)),
         }
@@ -282,6 +345,12 @@ impl<'src> Lexer<'src> {
           TokenVariant::KeywordTrue
         } else if ident == "false" {
           TokenVariant::KeywordFalse
+        } else if ident == "raw" {
+          TokenVariant::KeywordRaw
+        } else if ident == "mut" {
+          TokenVariant::KeywordMut
+        } else if ident == "own" {
+          TokenVariant::KeywordOwn
         } else {
           TokenVariant::Ident(ident)
         };
@@ -301,7 +370,10 @@ impl<'src> Lexer<'src> {
               string.push(c);
               end_loc = loc;
             } else if Self::is_start_of_ident(c) {
-              return Err(span!(LexerErrorVariant::IdentAfterIntLiteral, loc));
+              return Err(span!(
+                LexerErrorVariant::IdentAfterIntLiteral,
+                loc,
+              ));
             } else {
               break;
             }
@@ -309,14 +381,23 @@ impl<'src> Lexer<'src> {
             break;
           }
         }
-        let value = string.parse::<u64>().expect(
-          "we pushed something which wasn't 0...9 onto a string"
-        );
+        let value = string
+          .parse::<u64>()
+          .expect("\
+            we pushed something which wasn't \
+            0...9 onto a string\
+          ");
 
-        Ok(span!(TokenVariant::Integer(value), loc, end_loc))
+        Ok(span!(
+          TokenVariant::Integer(value),
+          loc,
+          end_loc,
+        ))
       },
 
-      ch => Err(span!(LexerErrorVariant::UnknownChar(ch), loc)),
+      ch => {
+        Err(span!(LexerErrorVariant::UnknownChar(ch), loc))
+      },
     }
   }
 }

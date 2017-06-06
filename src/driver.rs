@@ -6,12 +6,14 @@ mod macros;
 
 mod parse;
 mod ast;
+mod mir;
 #[allow(dead_code)]
 mod ty;
 
 use std::fs::File;
 
 use ast::Ast;
+use mir::Mir;
 
 pub(crate) enum DebugPrint {
   Print,
@@ -53,15 +55,20 @@ fn main() {
     ap.parse_args_or_exit();
   }
 
-  let _print_ast = DebugPrint::from(print_ast);
-  let _print_mir = DebugPrint::from(print_mir);
-
-  //let output = output.unwrap_or(get_output_from_name(&name));
-
   let mut file = Vec::new();
-  File::open(&name).expect(&name).read_to_end(&mut file).unwrap();
+  File::open(&name)
+    .expect(&name)
+    .read_to_end(&mut file)
+    .unwrap();
   let file = String::from_utf8(file).unwrap();
 
   let ast = Ast::new(&file);
-  ast.print();
+  if print_ast {
+    ast.print();
+  }
+  let mir = Mir::new(ast);
+  if print_mir {
+    mir.print();
+  }
+  println!("{:?}", mir.run());
 }
