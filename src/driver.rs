@@ -1,4 +1,4 @@
-extern crate argparse;
+extern crate clap;
 extern crate typed_arena;
 
 #[macro_use]
@@ -13,6 +13,7 @@ use std::fs::File;
 use ast::Ast;
 use mir::Mir;
 
+
 pub(crate) enum DebugPrint {
   Print,
   NoPrint,
@@ -25,33 +26,28 @@ impl From<bool> for DebugPrint {
 }
 
 fn main() {
+  use clap::{App, Arg};
   use std::io::Read;
 
-  let mut name = "".to_owned();
-  let mut print_ast = false;
-  let mut print_mir = false;
-  {
-    use argparse::{ArgumentParser, Store, StoreTrue};
+  let matches = App::new("caféc")
+    .version("0.1.0")
+    .author("Nicole Mazzuca <npmazzuca@gmail.com>")
+    .about("\
+      A compiler for the café language.\n\
+      Written in Rust.")
+    .arg(Arg::with_name("input")
+      .required(true))
+    .arg(Arg::with_name("print-ast")
+      .long("print-ast")
+      .help("print the generated AST"))
+    .arg(Arg::with_name("print-mir")
+      .long("print-mir")
+      .help("print the generated MIR"))
+    .get_matches();
 
-    let mut ap = ArgumentParser::new();
-    ap.set_description("\
-      The compiler for café.\n\
-      Written in Rust.\
-    ");
-    ap.refer(&mut name).required().add_argument(
-      "name", Store, "The file to compile"
-    );
-    ap.refer(&mut print_ast).add_option(
-      &["--print-ast"], StoreTrue,
-      "Pass if you would like to print the generated AST",
-    );
-    ap.refer(&mut print_mir).add_option(
-      &["--print-mir"], StoreTrue,
-      "Pass if you would like to print the generated MIR",
-    );
-
-    ap.parse_args_or_exit();
-  }
+  let name = matches.value_of("input").unwrap();
+  let print_ast = matches.is_present("print-ast");
+  let print_mir = matches.is_present("print-mir");
 
   let mut file = Vec::new();
   File::open(&name)
