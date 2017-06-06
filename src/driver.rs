@@ -7,8 +7,6 @@ mod macros;
 mod parse;
 mod ast;
 mod mir;
-#[allow(dead_code)]
-mod ty;
 
 use std::fs::File;
 

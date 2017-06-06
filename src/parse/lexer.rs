@@ -233,15 +233,15 @@ impl<'src> Lexer<'src> {
             LexerErrorVariant::ReservedToken("++"),
             loc,
             end_loc,
-          )),
-        }
+          ))
+        },
         Some(('=', end_loc)) => {
           Err(span!(
             LexerErrorVariant::ReservedToken("+="),
             loc,
             end_loc,
-          )),
-        }
+          ))
+        },
         _ => Ok(span!(TokenVariant::Plus, loc)),
       },
       '-' => match self.peekc() {

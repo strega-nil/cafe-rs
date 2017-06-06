@@ -283,12 +283,17 @@ impl<'src> Parser<'src> {
   }
 
   fn parse_expr(&mut self) -> ParserResult<Expression> {
-    let Spanned { ref thing, ref start, .. } =
-      *self.peek_token()?;
-    match *thing {
-      TokenVariant::Semicolon
-      | TokenVariant::CloseBrace
-      => {
+    match *self.peek_token()? {
+      Spanned {
+        thing: TokenVariant::Semicolon,
+        start,
+        ..
+      }
+      | Spanned {
+        thing: TokenVariant::CloseBrace,
+        start,
+        ..
+      } => {
         Ok(Spanned::new(
           ExpressionVariant::Nullary,
           start,
@@ -305,7 +310,7 @@ impl<'src> Parser<'src> {
             ExpressionVariant::IntLiteral(u),
             start,
             end,
-          )),
+          ))
         },
         tok => {
           panic!("unimplemented expression: {:?}", tok)
