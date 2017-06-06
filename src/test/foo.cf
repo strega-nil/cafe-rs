@@ -1,17 +1,17 @@
-zero: struct { }
-succ: (_: type) -> struct { }
+zero :: struct { }
+succ :: (_: type) => struct { }
 
-nat: (_: type) -> interface {
+nat :: (_: type) => interface {
   value: u64;
 }
-impl nat(zero) {
+impl :: nat(zero) {
   value = 0;
 }
-impl (T: type) -> nat(succ(T)) {
+impl :: (T: type) => nat(succ(T)) {
   value = nat(T)::value + 1;
 }
 
-plus: (L <: nat, R) -> interface
+plus :: (L <: nat, R) => interface
   requires nat(R)
 {
   type t;
@@ -20,31 +20,34 @@ plus: (L <: nat, R) -> interface
   // type t <: nat;
 }
 
-impl (Rhs <: nat) -> plus(zero, Rhs) {
+impl :: (Rhs <: nat) => plus(zero, Rhs) {
   type t = Rhs;
 }
 
-impl (Lhs, Rhs) -> plus(succ(Lhs), Rhs)
+impl :: (Lhs, Rhs) => plus(succ(Lhs), Rhs)
   requires plus(Lhs, Rhs)
 {
   type t = succ(plus(Lhs, Rhs)::t);
 }
 /* also valid (and equivalent)
-impl (Rhs, Lhs <: plus(Rhs)) -> plus(succ(Lhs), Rhs) {
+impl :: (Rhs, Lhs <: plus(Rhs)) => plus(succ(Lhs), Rhs) {
   type t = succ(plus(Lhs, Rhs)::t);
 }
 */
 
 //
 
-optional: (T) -> enum {
+optional :: (T) => enum {
   some: T;
   none: ();
 }
 
 //
 
-is_some: (T) -> fn(opt: optional(T), _: to_show_off_multiple_params) -> bool {
+is_some :: (T) => fn(
+  opt: optional(T),
+  _: to_show_off_multiple_params,
+) -> bool {
   // unknown what the match syntax will be yet
   // probably similar to Rust
   match opt {
@@ -53,11 +56,12 @@ is_some: (T) -> fn(opt: optional(T), _: to_show_off_multiple_params) -> bool {
   }
 }
 
-// equivalent to foo: (T <: nat) -> fn(t: T) -> u64 { T::value }
+// equivalent to
+//   foo: (T <: nat) -> fn(t: T) -> u64 { T::value }
 // unsure which of the following I should use?
-foo: fn(t <: nat) -> u64 {
+foo :: fn(t <: nat) -> u64 {
   typeof(t)::value
 }
-foo: fn(t: nat) -> u64 {
+foo :: fn(t: nat) -> u64 {
   typeof(t)::value
 }
