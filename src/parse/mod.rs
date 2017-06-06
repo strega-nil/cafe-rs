@@ -409,7 +409,7 @@ impl<'src> Parser<'src> {
 
   pub fn next_item(&mut self) -> ParserResult<Item> {
     let name = allow_eof!(self.parse_ident())?;
-    let sp = eat_token!(self, Colon);
+    let sp = eat_token!(self, ColonColon);
     /*
       parse type parameters here
     */
