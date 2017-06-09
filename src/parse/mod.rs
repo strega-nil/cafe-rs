@@ -7,29 +7,15 @@ use self::lexer::{
   Token,
   TokenVariant,
 };
+use ast::{
+  ExpressionVariant, Expression,
+  StatementVariant, Statement,
+  ItemVariant, Item,
+  Block_, Block,
+  StringlyType,
+};
 
 use std::str;
-
-
-#[derive(Clone, Debug)]
-#[allow(dead_code)]
-pub enum Category {
-  Raw,
-  Shared,
-  Mut,
-  Own,
-}
-
-// user defined types will be strings
-#[derive(Clone, Debug)]
-pub enum StringlyType {
-  Tuple(Vec<StringlyType>),
-  #[allow(dead_code)]
-  Reference(Category, Box<StringlyType>),
-  #[allow(dead_code)]
-  Pointer(Category, Box<StringlyType>),
-  UserDefinedType(String),
-}
 
 #[derive(Copy, Clone, Debug)]
 pub struct Location {
@@ -38,21 +24,21 @@ pub struct Location {
 }
 
 impl Location {
-  fn new() -> Self {
+  pub fn new() -> Self {
     Location {
       line: 1,
       column: 0,
     }
   }
 
-  fn next_char(self) -> Self {
+  pub fn next_char(self) -> Self {
     Location {
       column: self.column + 1,
       line: self.line
     }
   }
 
-  fn next_line(self) -> Self {
+  pub fn next_line(self) -> Self {
     Location {
       column: 0,
       line: self.line + 1,
@@ -81,47 +67,10 @@ impl<T> Spanned<T> {
   }
 }
 
-#[derive(Debug)]
-pub enum ExpressionVariant {
-  Nullary,
-  IntLiteral(u64),
-}
-type Expression = Spanned<ExpressionVariant>;
-#[derive(Debug)]
-pub enum StatementVariant {
-  Expr(Expression),
-}
-type Statement = Spanned<StatementVariant>;
-
 enum ExprOrStmt {
   Expr(Expression),
   Stmt(Statement),
 }
-
-
-
-#[derive(Debug)]
-pub struct Block_ {
-  statements: Vec<Statement>,
-  expr: Expression,
-}
-type Block = Spanned<Block_>;
-
-#[derive(Debug)]
-pub enum ItemVariant {
-  Function {
-    params: Vec<(String, String)>,
-    ret_ty: StringlyType,
-    blk: Block_,
-  },
-}
-
-#[derive(Debug)]
-pub struct Item_ {
-  name: String,
-  definition: ItemVariant,
-}
-pub type Item = Spanned<Item_>;
 
 #[derive(Clone, Debug)]
 pub enum ExpectedToken {
@@ -397,7 +346,7 @@ impl<'src> Parser<'src> {
         };
         let blk = self.parse_block()?;
         let thing = ItemVariant::Function {
-          params: vec![],
+          //params: vec![],
           ret_ty,
           blk: blk.thing,
         };
@@ -407,18 +356,15 @@ impl<'src> Parser<'src> {
     }
   }
 
-  pub fn next_item(&mut self) -> ParserResult<Item> {
+  pub fn next_item(&mut self)
+    -> ParserResult<(String, Item)>
+  {
     let name = allow_eof!(self.parse_ident())?;
     let sp = eat_token!(self, ColonColon);
     /*
       parse type parameters here
     */
     let def = self.parse_item_definition()?;
-
-    let thing = Item_ {
-      name,
-      definition: def.thing,
-    };
-    Ok(Spanned::new(thing, sp.start, def.end))
+    Ok((name, Spanned::new(def.thing, sp.start, def.end)))
   }
 }

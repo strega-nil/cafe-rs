@@ -4,32 +4,21 @@ extern crate typed_arena;
 #[macro_use]
 mod macros;
 
-mod parse;
 mod ast;
+mod containers;
 mod mir;
+mod parse;
 
 use std::fs::File;
 
 use ast::Ast;
 use mir::Mir;
 
-
-pub(crate) enum DebugPrint {
-  Print,
-  NoPrint,
-}
-
-impl From<bool> for DebugPrint {
-  fn from(x: bool) -> DebugPrint {
-    if x { DebugPrint::Print } else { DebugPrint::NoPrint }
-  }
-}
-
 fn main() {
   use clap::{App, Arg};
   use std::io::Read;
 
-  let matches = App::new("caféc")
+  let matches = App::new("cfc")
     .version("0.1.0")
     .author("Nicole Mazzuca <npmazzuca@gmail.com>")
     .about("\
@@ -60,7 +49,8 @@ fn main() {
   if print_ast {
     ast.print();
   }
-  let mir = Mir::new(ast);
+  let ctxt = mir::MirCtxt::new();
+  let mir = Mir::new(&ctxt, ast);
   if print_mir {
     mir.print();
   }
