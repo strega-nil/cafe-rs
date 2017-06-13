@@ -29,15 +29,15 @@ token :=
 
 keyword :=
   | `fn`
-  | # `type`
-  | # `if`
-  | # `else`
-  | # `true`
-  | # `false`
-  | # `let`
-  | # `raw`
-  | # `mut`
-  | # `own`
+  # | `type`
+  # | `if`
+  # | `else`
+  # | `true`
+  # | `false`
+  # | `let`
+  # | `raw`
+  # | `mut`
+  # | `own`
 
 identifier :=
   XID\_Start XID\_Continue*
@@ -47,12 +47,12 @@ literal :=
 
 number-literal :=
   | dec-digit-list+
-  | # `0x` hex-digit-list+
-  | # `0X` hex-digit-list+
-  | # `0b` bin-digit-list+
-  | # `0B` bin-digit-list+
-  | # `0o` oct-digit-list+
-  | # `0O` oct-digit-list+
+  # | `0x` hex-digit-list+
+  # | `0X` hex-digit-list+
+  # | `0b` bin-digit-list+
+  # | `0B` bin-digit-list+
+  # | `0o` oct-digit-list+
+  # | `0O` oct-digit-list+
 
 dec-digit-list :=
   | dec-digit ` `?
@@ -72,4 +72,5 @@ operator :=
   # | `&&` | `||`
 
 separator :=
-  `(` | `)` | `{` | `}` | `[` | `]` | `;`
+  `(` | `)` | `{` | `}` | `;`
+  # | `[` | `]` 

@@ -93,11 +93,11 @@ impl<'src> Lexer<'src> {
 
   #[inline]
   fn is_ident(c: char) -> bool {
-    Self::is_start_of_ident(c) || Self::is_digit(c)
+    Self::is_start_of_ident(c) || Self::is_dec_digit(c)
   }
 
   #[inline]
-  fn is_digit(c: char) -> bool {
+  fn is_dec_digit(c: char) -> bool {
     c >= '0' && c <= '9'
   }
 
@@ -188,6 +188,8 @@ impl<'src> Lexer<'src> {
     }
   }
 
+  // TODO(ubsan): switch to a more modular thing that
+  // follows the lexer files more closely
   pub fn next_token(&mut self) -> LexerResult<Token> {
     self.eat_whitespace();
     let (first, loc) = match self.getc() {
@@ -363,7 +365,7 @@ impl<'src> Lexer<'src> {
           }
         }
       },
-      c if Self::is_start_of_ident(c) => {
+      c if Self::is_start_of_ident(c) => { // ident
         let mut end_loc = loc;
         let mut ident = String::new();
         ident.push(c);
@@ -387,6 +389,7 @@ impl<'src> Lexer<'src> {
             end_loc,
           ))
         };
+        // keyword
         let tok = if ident == "fn" {
           TokenVariant::KeywordFn
         } else if ident == "let" {
@@ -413,15 +416,17 @@ impl<'src> Lexer<'src> {
 
         Ok(span!(tok, loc, end_loc))
       },
-      c if Self::is_digit(c) => {
+      c if Self::is_dec_digit(c) => { // number-literal
         // TODO(ubsan): support non-decimal integer literals
         let mut string = String::new();
         string.push(c);
         let mut end_loc = loc;
         loop {
-          self.eat_whitespace();
+          if let Some((' ', _)) = self.peekc() {
+            self.getc();
+          }
           if let Some((c, loc)) = self.peekc() {
-            if Self::is_digit(c) {
+            if Self::is_dec_digit(c) {
               self.getc();
               string.push(c);
               end_loc = loc;
