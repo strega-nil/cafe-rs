@@ -24,9 +24,9 @@ pub enum TokenVariant {
   KeywordFn,
 
   // Categories
-  KeywordRaw,
-  KeywordMut,
-  KeywordOwn,
+  //KeywordRaw,
+  //KeywordMut,
+  //KeywordOwn,
 
   // Braces
   OpenBrace,
@@ -35,33 +35,32 @@ pub enum TokenVariant {
   CloseParen,
 
   // Statement
-  KeywordLet,
+  //KeywordLet,
 
   // Expression
-  KeywordTrue,
-  KeywordFalse,
-  KeywordIf,
-  KeywordElse,
+  //KeywordTrue,
+  //KeywordFalse,
+  //KeywordIf,
+  //KeywordElse,
   Ident(String),
   Integer(u64),
 
-  Plus,
-  Minus,
-  Star,
-  And,
+  //Plus,
+  //Minus,
+  //Star,
+  //And,
 
-  LessThanEquals,
+  //LessThanEquals,
 
   // Declaration/Types/Assignment
-  Colon,
+  //Colon,
   ColonColon,
-  ColonEquals,
-  Equals,
+  //Equals,
   SkinnyArrow,
 
   // Separators
   Semicolon,
-  Comma,
+  //Comma,
 
   Eof,
 }
@@ -210,13 +209,21 @@ impl<'src> Lexer<'src> {
           self.getc();
           Ok(span!(TokenVariant::ColonColon, loc, end_loc))
         },
-        Some(('=', end_loc)) => {
-          self.getc();
-          Ok(span!(TokenVariant::ColonEquals, loc, end_loc))
-        },
-        _ => Ok(span!(TokenVariant::Colon, loc))
+        _ => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken(":"),
+            loc,
+            loc,
+          ))
+        }
       },
-      ',' => Ok(span!(TokenVariant::Comma, loc)),
+      ',' => {
+        Err(span!(
+          LexerErrorVariant::ReservedToken(","),
+          loc,
+          loc,
+        ))
+      }
       '&' => match self.peekc() {
         Some(('&', end_loc)) => {
           Err(span!(
@@ -232,7 +239,13 @@ impl<'src> Lexer<'src> {
             end_loc,
           ))
         },
-        _ => Ok(span!(TokenVariant::And, loc)),
+        _ => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("&"),
+            loc,
+            loc,
+          ))
+        }
       },
       '+' => match self.peekc() {
         // eventually, concat operator
@@ -250,7 +263,13 @@ impl<'src> Lexer<'src> {
             end_loc,
           ))
         },
-        _ => Ok(span!(TokenVariant::Plus, loc)),
+        _ => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("+"),
+            loc,
+            loc,
+          ))
+        }
       },
       '-' => match self.peekc() {
         Some(('>', end_loc)) => {
@@ -264,7 +283,13 @@ impl<'src> Lexer<'src> {
             end_loc,
           ))
         }
-        _ => Ok(span!(TokenVariant::Minus, loc)),
+        _ => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("-"),
+            loc,
+            loc,
+          ))
+        }
       },
       '*' => match self.peekc() {
         Some(('=', end_loc)) => {
@@ -274,7 +299,13 @@ impl<'src> Lexer<'src> {
             end_loc,
           ))
         }
-        _ => Ok(span!(TokenVariant::Star, loc)),
+        _ => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("*"),
+            loc,
+            loc,
+          ))
+        }
       },
       '/' => match self.peekc() {
         Some(('*', _)) => {
@@ -291,6 +322,7 @@ impl<'src> Lexer<'src> {
           Err(span!(
             LexerErrorVariant::ReservedToken("/"),
             loc,
+            loc,
           ))
         },
       },
@@ -298,8 +330,8 @@ impl<'src> Lexer<'src> {
       '<' => match self.peekc() {
         Some(('=', end_loc)) => {
           self.getc();
-          Ok(span!(
-            TokenVariant::LessThanEquals,
+          Err(span!(
+            LexerErrorVariant::ReservedToken("<="),
             loc,
             end_loc,
           ))
@@ -307,6 +339,7 @@ impl<'src> Lexer<'src> {
         _ => {
           Err(span!(
             LexerErrorVariant::ReservedToken("<"),
+            loc,
             loc,
           ))
         },
@@ -321,7 +354,13 @@ impl<'src> Lexer<'src> {
               end_loc,
             ))
           },
-          _ => Ok(span!(TokenVariant::Equals, loc, loc)),
+          _ => {
+            Err(span!(
+              LexerErrorVariant::ReservedToken("="),
+              loc,
+              loc,
+            ))
+          }
         }
       },
       c if Self::is_start_of_ident(c) => {
@@ -341,24 +380,33 @@ impl<'src> Lexer<'src> {
             break;
           }
         }
+        let err = |tok| {
+          Err(span!(
+            LexerErrorVariant::ReservedToken(tok),
+            loc,
+            end_loc,
+          ))
+        };
         let tok = if ident == "fn" {
           TokenVariant::KeywordFn
         } else if ident == "let" {
-          TokenVariant::KeywordLet
+          return err("let")
+        } else if ident == "type" {
+          return err("type")
         } else if ident == "if" {
-          TokenVariant::KeywordIf
+          return err("if")
         } else if ident == "else" {
-          TokenVariant::KeywordElse
+          return err("else")
         } else if ident == "true" {
-          TokenVariant::KeywordTrue
+          return err("true")
         } else if ident == "false" {
-          TokenVariant::KeywordFalse
+          return err("false")
         } else if ident == "raw" {
-          TokenVariant::KeywordRaw
+          return err("raw")
         } else if ident == "mut" {
-          TokenVariant::KeywordMut
+          return err("mut")
         } else if ident == "own" {
-          TokenVariant::KeywordOwn
+          return err("own")
         } else {
           TokenVariant::Ident(ident)
         };

@@ -1,0 +1,75 @@
+NOTES:
+  - if the lexer discovers a keyword, it is treated as a
+    keyword, not as an identifier 
+  - XID_* shall be treated as a unicode character class
+  - token-class* shall be treated as "0 or more
+    repetitions of identifier-class"
+  - token-class+ shall be treated as "1 or more
+    repetitions of identifier-class"
+  - token-class? shall be treated as "0 or 1
+    repetitions of identifier-class"
+  - literal sequences of characters shall be denoted in ``
+    - literal ` shall be denoted as `\``
+  - # shall denote future expansions
+  - a comment shall either be a line comment, or a block
+    comment
+    - a line comment shall start with a `//`, and shall end
+      in a new line
+    - a block comment shall start with a `/*`, end with a
+      `*/`, and does nest.
+  - whitespace - a character of class XID_WSpace - is used
+    to split tokens, but is not a token in and of itself
+
+token :=
+  | keyword
+  | identifier
+  | literal
+  | separator
+  | operator
+
+keyword :=
+  | `fn`
+  | # `type`
+  | # `if`
+  | # `else`
+  | # `true`
+  | # `false`
+  | # `let`
+  | # `raw`
+  | # `mut`
+  | # `own`
+
+identifier :=
+  XID\_Start XID\_Continue*
+
+literal :=
+  | number-literal
+
+number-literal :=
+  | dec-digit-list+
+  | # `0x` hex-digit-list+
+  | # `0X` hex-digit-list+
+  | # `0b` bin-digit-list+
+  | # `0B` bin-digit-list+
+  | # `0o` oct-digit-list+
+  | # `0O` oct-digit-list+
+
+dec-digit-list :=
+  | dec-digit ` `?
+
+dec-digit :=
+  | `0` | `1` | `2` | `3` | `4`
+  | `5` | `6` | `7` | `8` | `9`
+
+operator :=
+  | `->` | `::`
+  # | `++` | `:` | `=` | `=>`
+  # | `<` | `>` | `<=` | `>=` | `==` | `!=`
+  # | `+` | `-` | `*` | `/` | `%`
+  # | `+=` | `-=` | `*=` | `/=` | `%=`
+  # | `^` | `&` | `|`
+  # | `^=` | `&=` | `|=`
+  # | `&&` | `||`
+
+separator :=
+  `(` | `)` | `{` | `}` | `[` | `]` | `;`

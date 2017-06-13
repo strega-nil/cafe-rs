@@ -217,8 +217,8 @@ impl<'src> Parser<'src> {
       TokenVariant::Ident(s) => {
         Ok(StringlyType::UserDefinedType(s))
       },
-      TokenVariant::And => unimplemented!(),
-      TokenVariant::Star => unimplemented!(),
+      //TokenVariant::And => unimplemented!(),
+      //TokenVariant::Star => unimplemented!(),
       TokenVariant::OpenParen => unimplemented!(),
       tok => Err(Spanned {
         thing: ParserErrorVariant::UnexpectedToken {
@@ -272,9 +272,9 @@ impl<'src> Parser<'src> {
     &mut self,
   ) -> ParserResult<ExprOrStmt> {
     match *self.peek_token()? {
-      Spanned { thing: TokenVariant::KeywordLet, .. } => {
+      /*Spanned { thing: TokenVariant::KeywordLet, .. } => {
         unimplemented!()
-      },
+      },*/
       _ => {
         let expr = self.parse_expr()?;
         if let Spanned {

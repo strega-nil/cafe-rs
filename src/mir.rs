@@ -1,85 +1,81 @@
 #![allow(dead_code)]
 
 use containers::{Arena, ArenaMap};
-use parse::{Location, Spanned};
-use ast::{self, Ast, StringlyType};
-use std::collections::HashSet;
-use std::sync::RwLock;
+use parse::Spanned;
+use ast::{Ast, StringlyType};
 
 
-mod types {
-  #[derive(Debug)]
-  pub(super) enum IntSize {
-    //I8,
-    //I16,
-    I32,
-    //I64,
-    // ISize,
-    // I128,
-  }
-  #[derive(Debug)]
-  pub(super) enum BuiltinType {
-    SInt(IntSize),
-    //UInt(IntSize),
-    //Bool,
-  }
+#[derive(Debug)]
+pub enum IntSize {
+  //I8,
+  //I16,
+  I32,
+  //I64,
+  // ISize,
+  // I128,
+}
+#[derive(Debug)]
+pub enum BuiltinType {
+  SInt(IntSize),
+  //UInt(IntSize),
+  //Bool,
+}
 
-  #[derive(Debug)]
-  pub(super) enum TypeVariant {
-    Builtin(BuiltinType),
+#[derive(Debug)]
+pub enum TypeVariant {
+  Builtin(BuiltinType),
+}
+impl TypeVariant {
+  pub fn s32() -> Self {
+    TypeVariant::Builtin(BuiltinType::SInt(IntSize::I32))
   }
 }
-use self::types::*;
 
 #[derive(Copy, Clone, Debug)]
-struct Type<'tcx>(&'tcx TypeVariant /* <'tcx> */);
+pub struct Type<'ctx>(&'ctx TypeVariant /* <'ctx> */);
 
 #[derive(Debug)]
-struct Function<'tcx> {
-  ret_ty: Type<'tcx>,
+struct Function<'ctx> {
+  ret_ty: Type<'ctx>,
+  //blks: Vec<BlockData>,
 }
 
 #[derive(Debug)]
-enum ItemVariant<'tcx> {
-  Function(Function<'tcx>),
-  Type(Type<'tcx>),
+enum ItemVariant<'ctx> {
+  Function(Function<'ctx>),
+  Type(Type<'ctx>),
 }
-#[derive(Debug)]
-struct Item<'tcx> {
-  variant: ItemVariant<'tcx>,
-  display_name: String,
-  start: Location,
-  end: Option<Location>,
-}
+type Item<'ctx> = Spanned<ItemVariant<'ctx>>;
 
 struct ItemIdx(usize);
 
-pub struct MirCtxt(Arena<TypeVariant>);
+pub struct MirCtxt {
+  types: Arena<TypeVariant>,
+}
 
 impl MirCtxt {
-  pub fn new() -> Self { MirCtxt(Arena::new()) }
+  pub fn new() -> Self {
+    MirCtxt {
+      types: Arena::new(),
+    }
+  }
 }
 
-pub struct Mir<'tcx> {
+pub struct Mir<'ctx> {
   // NOTE(ubsan): when I get namespacing, I should probably
   // use paths for this?
-  items: ArenaMap<String, Item<'tcx>>,
-  types: &'tcx Arena<TypeVariant/* <'tcx> */>,
-  // NOTE(ubsan): make sure we don't create loops
-  working: RwLock<HashSet<String>>,
+  items: ArenaMap<String, Item<'ctx>>,
+  types: &'ctx Arena<TypeVariant/* <'ctx> */>,
 }
 
-impl<'tcx> Mir<'tcx> {
-  pub fn new(types: &'tcx MirCtxt, ast: Ast) -> Self {
-    let ast = ast;
-    let self_: Mir<'tcx> = Mir {
-      types: &types.0,
+impl<'ctx> Mir<'ctx> {
+  pub fn new(ctx: &'ctx MirCtxt, mut ast: Ast) -> Self {
+    let mut self_: Mir<'ctx> = Mir {
+      types: &ctx.types,
       items: ArenaMap::new(),
-      working: RwLock::new(HashSet::new()),
     };
 
-    self_.prelude_types();
-    self_.build(ast);
+    ast.build_mir(&mut self_);
 
     self_
   }
@@ -95,75 +91,41 @@ impl<'tcx> Mir<'tcx> {
   }
 }
 
-impl<'tcx> Mir<'tcx> {
-  fn prelude_types(&self) {
-    let ref_ = self.types.push(
-      TypeVariant::Builtin(BuiltinType::SInt(IntSize::I32)),
-    );
-    let item = Item {
-      variant: ItemVariant::Type(Type(ref_)),
-      display_name: String::from("s32"),
-      start: Location::new(),
-      end: None,
-    };
-    self.items.insert(String::from("s32"), item);
-  }
-
-  fn build(&self, ast: Ast) {
-    for (name, item) in &ast.items {
-      if self.items.contains(name) {
-        continue;
-      }
-
-      self.build_item(name, item);
-    }
-  }
-
-  fn build_item(&self, name: &str, item: &ast::Item) {
-    use ast::ItemVariant as IV;
-    let Spanned { thing: ref v, start, end } = *item;
-
-    self.working.write().unwrap().insert(name.to_owned());
-    match *v {
-      IV::Function {
-        //ref params,
-        ref ret_ty,
-        ref blk,
-      } => {
-        let itm = Item {
-          variant: self.build_func(ret_ty, blk),
-          display_name: name.to_owned(),
-          start,
-          end,
-        };
-        self.items.insert(name.to_owned(), itm);
-      }
-    }
-    self.working.write().unwrap().remove(name);
-  }
-
-  fn build_func(
+impl<'ctx> Mir<'ctx> {
+  pub fn type_(
     &self,
-    ret_ty: &StringlyType,
-    _blk: &ast::Block_,
-  ) -> ItemVariant<'tcx> {
-    let ret_ty = self.get_type(ret_ty);
-    ItemVariant::Function(Function {
-      ret_ty
-    })
+    name: Option<String>,
+    ty: Spanned<TypeVariant> /* <'ctx> */,
+  ) -> Type<'ctx> {
+    let thing = Type(self.types.push(ty.thing));
+    let item = Item {
+      thing: ItemVariant::Type(thing),
+      start: ty.start,
+      end: ty.end,
+    };
+    if let Some(name) = name {
+      self.items.insert(name, item);
+    } else {
+      self.items.insert_anonymous(item);
+    }
+    thing
   }
 
-  fn get_type(&self, stype: &StringlyType) -> Type<'tcx> {
+  pub fn get_type(
+    &self,
+    stype: &StringlyType,
+  ) -> Option<Type<'ctx>> {
     match *stype {
       StringlyType::UserDefinedType(ref name) => {
         if let Some(ty) = self.items.get(name) {
-          if let ItemVariant::Type(ty) = ty.variant {
-            return ty;
+          if let ItemVariant::Type(ty) = ty.thing {
+            return Some(ty);
           } else {
             unimplemented!()
           }
+        } else {
+          None
         }
-        unimplemented!()
       },
       _ => unimplemented!(),
     }

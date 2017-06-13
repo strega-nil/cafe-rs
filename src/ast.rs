@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use parse::{Parser, ParserErrorVariant, Spanned};
+use parse::{Location, Parser, ParserErrorVariant, Spanned};
+use mir::{self, Mir};
+use std::collections::HashSet;
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
@@ -52,8 +54,16 @@ pub enum ItemVariant {
 }
 pub type Item = Spanned<ItemVariant>;
 
+impl ItemVariant {
+  fn build_mir(&self, mir: &Mir) {
+    match *self {
+      _ => unimplemented!()
+    }
+  }
+}
+
 pub struct Ast {
-  pub items: HashMap<String, Item>,
+  items: HashMap<String, Item>,
 }
 
 impl Ast {
@@ -81,5 +91,25 @@ impl Ast {
     for item in &self.items {
       println!("{} :: {:#?}", item.0, item.1.thing);
     }
+  }
+}
+
+impl Ast {
+  pub fn build_mir<'ctx>(&mut self, mir: &mut Mir<'ctx>) {
+    Self::prelude_types(mir);
+    for (name, item) in &self.items {
+      let mut working = HashSet::new();
+      working.insert(name);
+      //item.build_mir(name, mir);
+    }
+  }
+
+  fn prelude_types(mir: &Mir) {
+    let ty = Spanned {
+      thing: mir::TypeVariant::s32(),
+      start: Location::new(),
+      end: None,
+    };
+    mir.type_(Some(String::from("s32")), ty);
   }
 }

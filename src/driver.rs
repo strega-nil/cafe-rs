@@ -1,5 +1,4 @@
 extern crate clap;
-extern crate typed_arena;
 
 #[macro_use]
 mod macros;
