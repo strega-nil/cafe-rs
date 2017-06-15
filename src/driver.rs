@@ -44,7 +44,7 @@ fn main() {
     .unwrap();
   let file = String::from_utf8(file).unwrap();
 
-  let ast = Ast::new(&file);
+  let ast = Ast::new(&file).unwrap();
   if print_ast {
     ast.print();
   }

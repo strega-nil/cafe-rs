@@ -1,6 +1,11 @@
 use std::collections::HashMap;
 
-use parse::{Location, Parser, ParserErrorVariant, Spanned};
+use parse::{
+  ItemVariant,
+  Parser,
+  ParserError, ParserErrorVariant,
+  Spanned
+};
 use mir::{self, Mir};
 use std::collections::HashSet;
 
@@ -45,71 +50,115 @@ pub struct Block_ {
 pub type Block = Spanned<Block_>;
 
 #[derive(Debug)]
-pub enum ItemVariant {
+pub enum ValueVariant {
   Function {
     //params: Vec<(String, StringlyType)>,
     ret_ty: StringlyType,
     blk: Block_,
   },
 }
-pub type Item = Spanned<ItemVariant>;
+pub type Value = Spanned<ValueVariant>;
 
-impl ItemVariant {
-  fn build_mir(&self, mir: &Mir) {
-    match *self {
-      _ => unimplemented!()
+impl Value {
+  fn build_mir(&self, name: &str, mir: &Mir) {
+    unimplemented!()
+  }
+}
+
+#[derive(Debug)]
+pub enum AstErrorVariant {
+  Parser(ParserErrorVariant),
+  MultipleValueDefinitions {
+    name: String,
+    original: Spanned<()>,
+  },
+}
+pub type AstError = Spanned<AstErrorVariant>;
+pub type AstResult<T> = Result<T, AstError>;
+
+impl From<ParserError> for AstError {
+  fn from(pe: ParserError) -> AstError {
+    Spanned {
+      thing: AstErrorVariant::Parser(pe.thing),
+      start: pe.start,
+      end: pe.end,
     }
   }
 }
 
 pub struct Ast {
-  items: HashMap<String, Item>,
+  values: HashMap<String, Value>,
 }
 
 impl Ast {
-  pub fn new(file: &str) -> Self {
+  pub fn new(file: &str) -> AstResult<Self> {
     let mut parse = Parser::new(file);
-    let mut items = HashMap::new();
+    let mut values = HashMap::<String, Value>::new();
     loop {
       match parse.next_item() {
-        Ok((name, item)) => {
-          items.insert(name, item);
+        Ok((
+          name,
+          Spanned {
+            thing: ItemVariant::Value(thing),
+            start,
+            end,
+          }
+        )) => {
+          if let Some(orig) = values.get(&name) {
+            return Err(Spanned {
+              thing: AstErrorVariant::MultipleValueDefinitions {
+                name: name.clone(),
+                original: Spanned {
+                  thing: (),
+                  start: orig.start,
+                  end: orig.end,
+                },
+              },
+              start,
+              end,
+            });
+          };
+          values.insert(
+            name,
+            Spanned { thing, start, end },
+          );
         },
         Err(Spanned {
           thing: ParserErrorVariant::ExpectedEof,
           ..
         }) => break,
-        Err(e) => panic!("error: {:#?}", e),
+        Err(e) => return Err(e.into()),
       }
     }
-    Ast {
-      items
-    }
+    Ok(Ast {
+      values
+    })
   }
 
   pub fn print(&self) {
-    for item in &self.items {
-      println!("{} :: {:#?}", item.0, item.1.thing);
+    for value in &self.values {
+      println!("{} :: {:#?}", value.0, value.1.thing);
     }
   }
 }
 
 impl Ast {
-  pub fn build_mir<'ctx>(&mut self, mir: &mut Mir<'ctx>) {
+  pub fn build_mir<'ctx>(
+    &mut self,
+    mir: &mut Mir<'ctx>,
+  ) {
     Self::prelude_types(mir);
-    for (name, item) in &self.items {
+    for (name, value) in &self.values {
       let mut working = HashSet::new();
       working.insert(name);
-      //item.build_mir(name, mir);
+      value.build_mir(name, mir);
     }
   }
 
   fn prelude_types(mir: &Mir) {
-    let ty = Spanned {
-      thing: mir::TypeVariant::s32(),
-      start: Location::new(),
-      end: None,
-    };
-    mir.type_(Some(String::from("s32")), ty);
+    mir.type_(
+      Some(String::from("s32")),
+      mir::TypeVariant::s32(),
+    );
   }
 }

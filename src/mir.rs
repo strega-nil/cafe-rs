@@ -1,7 +1,7 @@
-#![allow(dead_code)]
+// TODO(ubsan): make sure to start dealing with Spanneds
+// whee errors are fun
 
-use containers::{Arena, ArenaMap};
-use parse::Spanned;
+use containers::{ArenaMap};
 use ast::{Ast, StringlyType};
 
 
@@ -31,9 +31,6 @@ impl TypeVariant {
   }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub struct Type<'ctx>(&'ctx TypeVariant /* <'ctx> */);
-
 #[derive(Debug)]
 struct Function<'ctx> {
   ret_ty: Type<'ctx>,
@@ -41,38 +38,45 @@ struct Function<'ctx> {
 }
 
 #[derive(Debug)]
-enum ItemVariant<'ctx> {
+enum ValueVariant<'ctx> {
   Function(Function<'ctx>),
-  Type(Type<'ctx>),
-}
-type Item<'ctx> = Spanned<ItemVariant<'ctx>>;
-
-struct ItemIdx(usize);
-
-pub struct MirCtxt {
-  types: Arena<TypeVariant>,
 }
 
-impl MirCtxt {
+#[derive(Copy, Clone, Debug)]
+pub struct Type<'ctx>(&'ctx TypeVariant /* <'ctx> */);
+#[derive(Copy, Clone, Debug)]
+pub struct Value<'ctx>(&'ctx ValueVariant<'ctx>);
+
+// NOTE(ubsan): when I get namespacing, I should probably
+// use paths instead of names?
+
+pub struct MirCtxt<'a> {
+  types: ArenaMap<String, TypeVariant/*<'a>*/>,
+  values: ArenaMap<String, ValueVariant<'a>>,
+}
+
+impl<'a> MirCtxt<'a> {
   pub fn new() -> Self {
     MirCtxt {
-      types: Arena::new(),
+      types: ArenaMap::new(),
+      values: ArenaMap::new(),
     }
   }
 }
 
 pub struct Mir<'ctx> {
-  // NOTE(ubsan): when I get namespacing, I should probably
-  // use paths for this?
-  items: ArenaMap<String, Item<'ctx>>,
-  types: &'ctx Arena<TypeVariant/* <'ctx> */>,
+  values: &'ctx ArenaMap<String, ValueVariant<'ctx>>,
+  types: &'ctx ArenaMap<String, TypeVariant/*<'ctx>*/>,
 }
 
 impl<'ctx> Mir<'ctx> {
-  pub fn new(ctx: &'ctx MirCtxt, mut ast: Ast) -> Self {
+  pub fn new(
+    ctx: &'ctx MirCtxt<'ctx>,
+    mut ast: Ast,
+  ) -> Self {
     let mut self_: Mir<'ctx> = Mir {
+      values: &ctx.values,
       types: &ctx.types,
-      items: ArenaMap::new(),
     };
 
     ast.build_mir(&mut self_);
@@ -81,8 +85,11 @@ impl<'ctx> Mir<'ctx> {
   }
 
   pub fn print(&self) {
-    for (name, item) in &*self.items.hashmap() {
-      println!("{:?} :: {:?}", name, unsafe { &**item });
+    for (name, ty) in &*self.types.hashmap() {
+      println!("{:?} :: {:?}", name, unsafe { &**ty });
+    }
+    for (name, value) in &*self.values.hashmap() {
+      println!("{:?} :: {:?}", name, unsafe { &**value });
     }
   }
 
@@ -95,20 +102,13 @@ impl<'ctx> Mir<'ctx> {
   pub fn type_(
     &self,
     name: Option<String>,
-    ty: Spanned<TypeVariant> /* <'ctx> */,
+    ty: TypeVariant/* <'ctx> */,
   ) -> Type<'ctx> {
-    let thing = Type(self.types.push(ty.thing));
-    let item = Item {
-      thing: ItemVariant::Type(thing),
-      start: ty.start,
-      end: ty.end,
-    };
     if let Some(name) = name {
-      self.items.insert(name, item);
+      Type(self.types.insert(name, ty))
     } else {
-      self.items.insert_anonymous(item);
+      Type(self.types.insert_anonymous(ty))
     }
-    thing
   }
 
   pub fn get_type(
@@ -117,15 +117,7 @@ impl<'ctx> Mir<'ctx> {
   ) -> Option<Type<'ctx>> {
     match *stype {
       StringlyType::UserDefinedType(ref name) => {
-        if let Some(ty) = self.items.get(name) {
-          if let ItemVariant::Type(ty) = ty.thing {
-            return Some(ty);
-          } else {
-            unimplemented!()
-          }
-        } else {
-          None
-        }
+        self.types.get(name).map(|t| Type(t))
       },
       _ => unimplemented!(),
     }

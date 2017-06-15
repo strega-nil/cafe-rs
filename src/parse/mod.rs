@@ -10,7 +10,7 @@ use self::lexer::{
 use ast::{
   ExpressionVariant, Expression,
   StatementVariant, Statement,
-  ItemVariant, Item,
+  ValueVariant,
   Block_, Block,
   StringlyType,
 };
@@ -71,6 +71,12 @@ enum ExprOrStmt {
   Expr(Expression),
   Stmt(Statement),
 }
+
+pub enum ItemVariant {
+  Value(ValueVariant),
+  //Type(Type),
+}
+pub type Item = Spanned<ItemVariant>;
 
 #[derive(Clone, Debug)]
 pub enum ExpectedToken {
@@ -345,11 +351,13 @@ impl<'src> Parser<'src> {
           }
         };
         let blk = self.parse_block()?;
-        let thing = ItemVariant::Function {
-          //params: vec![],
-          ret_ty,
-          blk: blk.thing,
-        };
+        let thing = ItemVariant::Value(
+          ValueVariant::Function {
+            //params: vec![],
+            ret_ty,
+            blk: blk.thing,
+          },
+        );
         Ok(Spanned::new(thing, start.start, blk.end))
       },
       tok => unexpected_token!(tok, Item, start, end),
