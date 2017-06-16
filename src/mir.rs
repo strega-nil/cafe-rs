@@ -1,8 +1,8 @@
 // TODO(ubsan): make sure to start dealing with Spanneds
 // whee errors are fun
 
-use containers::{ArenaMap};
 use ast::{Ast, StringlyType};
+use containers::ArenaMap;
 
 
 #[derive(Debug)]
@@ -51,7 +51,7 @@ pub struct Value<'ctx>(&'ctx ValueVariant<'ctx>);
 // use paths instead of names?
 
 pub struct MirCtxt<'a> {
-  types: ArenaMap<String, TypeVariant/*<'a>*/>,
+  types: ArenaMap<String, TypeVariant /*<'a>*/>,
   values: ArenaMap<String, ValueVariant<'a>>,
 }
 
@@ -66,14 +66,11 @@ impl<'a> MirCtxt<'a> {
 
 pub struct Mir<'ctx> {
   values: &'ctx ArenaMap<String, ValueVariant<'ctx>>,
-  types: &'ctx ArenaMap<String, TypeVariant/*<'ctx>*/>,
+  types: &'ctx ArenaMap<String, TypeVariant /*<'ctx>*/>,
 }
 
 impl<'ctx> Mir<'ctx> {
-  pub fn new(
-    ctx: &'ctx MirCtxt<'ctx>,
-    mut ast: Ast,
-  ) -> Self {
+  pub fn new(ctx: &'ctx MirCtxt<'ctx>, mut ast: Ast) -> Self {
     let mut self_: Mir<'ctx> = Mir {
       values: &ctx.values,
       types: &ctx.types,
@@ -102,7 +99,7 @@ impl<'ctx> Mir<'ctx> {
   pub fn type_(
     &self,
     name: Option<String>,
-    ty: TypeVariant/* <'ctx> */,
+    ty: TypeVariant, /* <'ctx> */
   ) -> Type<'ctx> {
     if let Some(name) = name {
       Type(self.types.insert(name, ty))
@@ -118,7 +115,7 @@ impl<'ctx> Mir<'ctx> {
     match *stype {
       StringlyType::UserDefinedType(ref name) => {
         self.types.get(name).map(|t| Type(t))
-      },
+      }
       _ => unimplemented!(),
     }
   }

@@ -1,12 +1,8 @@
 use std::collections::HashMap;
 
-use parse::{
-  ItemVariant,
-  Parser,
-  ParserError, ParserErrorVariant,
-  Spanned
-};
 use mir::{self, Mir};
+use parse::{ItemVariant, Parser, ParserError,
+            ParserErrorVariant, Spanned};
 use std::collections::HashSet;
 
 #[derive(Clone, Debug)]
@@ -96,14 +92,12 @@ impl Ast {
     let mut values = HashMap::<String, Value>::new();
     loop {
       match parse.next_item() {
-        Ok((
-          name,
-          Spanned {
-            thing: ItemVariant::Value(thing),
-            start,
-            end,
-          }
-        )) => {
+        Ok((name,
+            Spanned {
+              thing: ItemVariant::Value(thing),
+              start,
+              end,
+            })) => {
           if let Some(orig) = values.get(&name) {
             return Err(Spanned {
               thing: AstErrorVariant::MultipleValueDefinitions {
@@ -118,21 +112,15 @@ impl Ast {
               end,
             });
           };
-          values.insert(
-            name,
-            Spanned { thing, start, end },
-          );
-        },
+          values.insert(name, Spanned { thing, start, end });
+        }
         Err(Spanned {
-          thing: ParserErrorVariant::ExpectedEof,
-          ..
-        }) => break,
+              thing: ParserErrorVariant::ExpectedEof, ..
+            }) => break,
         Err(e) => return Err(e.into()),
       }
     }
-    Ok(Ast {
-      values
-    })
+    Ok(Ast { values })
   }
 
   pub fn print(&self) {
@@ -143,10 +131,7 @@ impl Ast {
 }
 
 impl Ast {
-  pub fn build_mir<'ctx>(
-    &mut self,
-    mir: &mut Mir<'ctx>,
-  ) {
+  pub fn build_mir<'ctx>(&mut self, mir: &mut Mir<'ctx>) {
     Self::prelude_types(mir);
     for (name, value) in &self.values {
       let mut working = HashSet::new();

@@ -20,17 +20,18 @@ fn main() {
   let matches = App::new("cfc")
     .version("0.1.0")
     .author("Nicole Mazzuca <npmazzuca@gmail.com>")
-    .about("\
+    .about(
+      "\
       A compiler for the café language.\n\
-      Written in Rust.")
-    .arg(Arg::with_name("input")
-      .required(true))
-    .arg(Arg::with_name("print-ast")
-      .long("print-ast")
-      .help("print the generated AST"))
-    .arg(Arg::with_name("print-mir")
-      .long("print-mir")
-      .help("print the generated MIR"))
+      Written in Rust.",
+    )
+    .arg(Arg::with_name("input").required(true))
+    .arg(Arg::with_name("print-ast").long("print-ast").help(
+      "print the generated AST",
+    ))
+    .arg(Arg::with_name("print-mir").long("print-mir").help(
+      "print the generated MIR",
+    ))
     .get_matches();
 
   let name = matches.value_of("input").unwrap();

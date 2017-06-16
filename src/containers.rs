@@ -1,9 +1,9 @@
-use std::sync::{self, Mutex, RwLock};
 use std::ptr;
+use std::sync::{self, Mutex, RwLock};
 
-use std::hash::Hash;
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::hash::Hash;
 
 pub struct Arena<T> {
   arena: Mutex<(Vec<Vec<T>>, *mut Vec<T>)>,
@@ -11,14 +11,10 @@ pub struct Arena<T> {
 
 impl<T> Arena<T> {
   pub fn new() -> Self {
-    let mut inner = (
-      vec![Vec::with_capacity(10)],
-      ptr::null_mut(),
-    );
+    let mut inner =
+      (vec![Vec::with_capacity(10)], ptr::null_mut());
     inner.1 = &mut inner.0[0];
-    Arena {
-      arena: Mutex::new(inner),
-    }
+    Arena { arena: Mutex::new(inner) }
   }
 
   pub fn push(&self, t: T) -> &T {
@@ -26,9 +22,7 @@ impl<T> Arena<T> {
     unsafe {
       let mut v = &mut *inner.1;
       if v.len() == v.capacity() {
-        inner.0.push(
-          Vec::with_capacity(v.capacity() * 2)
-        );
+        inner.0.push(Vec::with_capacity(v.capacity() * 2));
         inner.1 = inner.0.last_mut().unwrap();
         v = &mut *inner.1;
       }
@@ -72,12 +66,7 @@ impl<T: Hash + Eq, U> ArenaMap<T, U> {
     T: Borrow<B>,
     B: Hash + Eq,
   {
-    self
-      .map
-      .read()
-      .unwrap()
-      .get(key)
-      .map(|&r| unsafe { &*r })
+    self.map.read().unwrap().get(key).map(|&r| unsafe { &*r })
   }
 
   pub fn contains<B>(&self, key: &B) -> bool
