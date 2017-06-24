@@ -1,0 +1,18 @@
+prime_factors :: (n: u64) -> vector<u64> {
+  let mut factors = vector();
+  a: for i in 0..n {
+    if n % i == 0 {
+      for j in factors {
+        if i % j == 0 {
+          break;
+        }
+      } nobreak {
+        factors.push(i);
+      }
+    }
+  }
+}
+
+main :: fn() {
+  println("{}", prime_factors(600 851 475 143).last());
+}

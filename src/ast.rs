@@ -92,12 +92,14 @@ impl Ast {
     let mut values = HashMap::<String, Value>::new();
     loop {
       match parse.next_item() {
-        Ok((name,
-            Spanned {
-              thing: ItemVariant::Value(thing),
-              start,
-              end,
-            })) => {
+        Ok((
+          name,
+          Spanned {
+            thing: ItemVariant::Value(thing),
+            start,
+            end,
+          },
+        )) => {
           if let Some(orig) = values.get(&name) {
             return Err(Spanned {
               thing: AstErrorVariant::MultipleValueDefinitions {
@@ -115,8 +117,8 @@ impl Ast {
           values.insert(name, Spanned { thing, start, end });
         }
         Err(Spanned {
-              thing: ParserErrorVariant::ExpectedEof, ..
-            }) => break,
+          thing: ParserErrorVariant::ExpectedEof, ..
+        }) => break,
         Err(e) => return Err(e.into()),
       }
     }
@@ -141,9 +143,7 @@ impl Ast {
   }
 
   fn prelude_types(mir: &Mir) {
-    mir.type_(
-      Some(String::from("s32")),
-      mir::TypeVariant::s32(),
-    );
+    mir
+      .type_(Some(String::from("s32")), mir::TypeVariant::s32());
   }
 }

@@ -1,6 +1,10 @@
 extern crate unicode_normalization;
+extern crate unicode_xid;
+extern crate ucd;
 use self::unicode_normalization::{UnicodeNormalization,
                                   Recompositions};
+use self::unicode_xid::UnicodeXID;
+use self::ucd::Codepoint;
 
 use parse::{Location, Spanned};
 use std::str;
@@ -73,22 +77,20 @@ pub struct Lexer<'src> {
 impl<'src> Lexer<'src> {
   pub fn new(src: &str) -> Lexer {
     Lexer {
-      src: src.nfc(),
+      src: src.nfkc(),
       lookahead: None,
       current_loc: Location::new(),
     }
   }
 
-  // NOTE(ubsan): when I start allowing unicode identifiers,
-  // NORMALIZE
   #[inline]
   fn is_start_of_ident(c: char) -> bool {
-    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+    UnicodeXID::is_xid_start(c) || c == '_'
   }
 
   #[inline]
   fn is_ident(c: char) -> bool {
-    Self::is_start_of_ident(c) || Self::is_dec_digit(c)
+    UnicodeXID::is_xid_continue(c)
   }
 
   #[inline]
@@ -98,7 +100,7 @@ impl<'src> Lexer<'src> {
 
   #[inline]
   fn is_whitespace(c: char) -> bool {
-    c == '\t' || c == '\n' || c == '\r' || c == ' '
+    c.is_whitespace()
   }
 
   fn getc(&mut self) -> Option<(char, Location)> {

@@ -1,0 +1,74 @@
+public type vector :: (T) => struct {
+  ptr: &raw T,
+  len: usize,
+  cap: usize,
+}
+
+impl (T) => constructible(vector(T), T...) {
+  construct :: fn(ts: T...) -> Self {
+    // TODO(ubsan): figure out what this `sizeof(ts)` expression
+    // should be
+    let mut ret = vector::with_capacity(sizeof(ts));
+    for t in ts... {
+      ret.push(t);
+    }
+    ret
+  }
+}
+
+impl (T) => convertible(vector(T), box([]T)) {
+  convert :: fn(mut self) -> box([T]) {
+    self.shrink_to_fit();
+    let (ptr, len) = (self.ptr, self.len);
+    std::mem::forget(self);
+    let dst_ptr = ([]T)::from_raw_parts(ptr, len);
+    box::from_raw_parts(dst_ptr)
+  }
+}
+
+impl (T) => vector(T) {
+  public new :: fn() -> Self {
+    vector {
+      ptr: std::ptr::null(),
+      len: 0,
+      cap: 0,
+    }
+  }
+
+  public with_capacity :: fn(n: usize) -> Self {
+    vector {
+      ptr: std::ptr::allocate(n),
+      len: 0,
+      cap: n,
+    }
+  }
+
+  public push :: fn(mut self, t: T) {
+    unsafe {
+      if self.len < self.cap {
+        self.ptr.offset(self.len).write(t);
+        self.len += 1;
+      } else {
+        self.resize();
+        self.ptr.offset(self.len).write(t);
+        self.len += 1;
+      }
+    }
+  }
+
+  resize :: fn(mut self) {
+    unsafe {
+      let cap = if self.capacity == 0 {
+        8
+      } else { 
+        self.capacity * 2
+      };
+      let tmp = std::ptr::reallocate(self.ptr, cap, self.cap);
+      if tmp.is_null() {
+        // fail - not sure how yet
+        // should not unwind, I don't think
+      }
+      self.cap = cap;
+    }
+  }
+}

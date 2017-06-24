@@ -1,0 +1,19 @@
+use std.io.println;
+
+fib_sum :: fn(n: u64) -> u64 {
+  let mut sum = 0;
+  let mut a = 0;
+  let mut b = 1;
+  while a < n {
+    if a % 2 == 0 {
+      sum += a;
+    }
+    let tmp = a;
+    a += b;
+    b = tmp;
+  }
+}
+
+main :: fn() {
+  println("{}", fib_sum(4 000 000));
+}

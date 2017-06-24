@@ -3,3 +3,4 @@ reorder_imports = true
 reorder_imports_in_group = true
 tab_spaces = 2
 struct_variant_width = 0
+write_mode = "Overwrite"
