@@ -58,10 +58,8 @@ is_some :: (T) => fn(
 
 // equivalent to
 //   foo: (T <: nat) -> fn(t: T) -> u64 { T::value }
-// unsure which of the following I should use?
-foo :: fn(t <: nat) -> u64 {
-  typeof(t)::value
-}
+// perhaps?
+// this will *not* be in an early version of the language
 foo :: fn(t: nat) -> u64 {
   typeof(t)::value
 }
