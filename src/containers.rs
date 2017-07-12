@@ -11,10 +11,11 @@ pub struct Arena<T> {
 
 impl<T> Arena<T> {
   pub fn new() -> Self {
-    let mut inner =
-      (vec![Vec::with_capacity(10)], ptr::null_mut());
+    let mut inner = (vec![Vec::with_capacity(10)], ptr::null_mut());
     inner.1 = &mut inner.0[0];
-    Arena { arena: Mutex::new(inner) }
+    Arena {
+      arena: Mutex::new(inner),
+    }
   }
 
   pub fn push(&self, t: T) -> &T {
@@ -61,7 +62,7 @@ impl<T: Hash + Eq, U> ArenaMap<T, U> {
     }
   }
 
-  pub fn get<'a, B>(&'a self, key: &B) -> Option<&'a U>
+  pub fn get<'a, B: ?Sized>(&'a self, key: &B) -> Option<&'a U>
   where
     T: Borrow<B>,
     B: Hash + Eq,

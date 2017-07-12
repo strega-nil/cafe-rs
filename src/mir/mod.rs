@@ -1,9 +1,12 @@
 // TODO(ubsan): make sure to start dealing with Spanneds
 // whee errors are fun
 
+mod runner;
+
 use ast::{Ast, StringlyType};
 use containers::ArenaMap;
 
+use self::runner::Runner;
 
 #[derive(Debug)]
 pub enum IntSize {
@@ -32,47 +35,42 @@ impl TypeVariant {
 }
 
 #[derive(Debug)]
-struct Function<'ctx> {
+struct FunctionValue<'ctx> {
   ret_ty: Type<'ctx>,
   //blks: Vec<BlockData>,
-}
-
-#[derive(Debug)]
-enum ValueVariant<'ctx> {
-  Function(Function<'ctx>),
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct Type<'ctx>(&'ctx TypeVariant /* <'ctx> */);
 #[derive(Copy, Clone, Debug)]
-pub struct Value<'ctx>(&'ctx ValueVariant<'ctx>);
+pub struct Function<'ctx>(&'ctx FunctionValue<'ctx>);
 
 // NOTE(ubsan): when I get namespacing, I should probably
 // use paths instead of names?
 
 pub struct MirCtxt<'a> {
   types: ArenaMap<String, TypeVariant /*<'a>*/>,
-  values: ArenaMap<String, ValueVariant<'a>>,
+  funcs: ArenaMap<String, FunctionValue<'a>>,
 }
 
 impl<'a> MirCtxt<'a> {
   pub fn new() -> Self {
     MirCtxt {
       types: ArenaMap::new(),
-      values: ArenaMap::new(),
+      funcs: ArenaMap::new(),
     }
   }
 }
 
 pub struct Mir<'ctx> {
-  values: &'ctx ArenaMap<String, ValueVariant<'ctx>>,
+  funcs: &'ctx ArenaMap<String, FunctionValue<'ctx>>,
   types: &'ctx ArenaMap<String, TypeVariant /*<'ctx>*/>,
 }
 
 impl<'ctx> Mir<'ctx> {
   pub fn new(ctx: &'ctx MirCtxt<'ctx>, mut ast: Ast) -> Self {
     let mut self_: Mir<'ctx> = Mir {
-      values: &ctx.values,
+      funcs: &ctx.funcs,
       types: &ctx.types,
     };
 
@@ -83,20 +81,20 @@ impl<'ctx> Mir<'ctx> {
 
   pub fn print(&self) {
     for (name, ty) in &*self.types.hashmap() {
-      println!("{:?} :: {:?}", name, unsafe { &**ty });
+      println!("type {} = {:?}", name, unsafe { &**ty });
     }
-    for (name, value) in &*self.values.hashmap() {
-      println!("{:?} :: {:?}", name, unsafe { &**value });
+    for (name, value) in &*self.funcs.hashmap() {
+      println!("fn {} = {:?}", name, unsafe { &**value });
     }
   }
 
-  pub fn run(&self) {
-    unimplemented!()
+  pub fn run(&self) -> i32 {
+    Runner::new(self).call("main")
   }
 }
 
 impl<'ctx> Mir<'ctx> {
-  pub fn type_(
+  pub fn insert_type(
     &self,
     name: Option<String>,
     ty: TypeVariant, /* <'ctx> */
@@ -108,10 +106,20 @@ impl<'ctx> Mir<'ctx> {
     }
   }
 
-  pub fn get_type(
+  pub fn insert_function(
     &self,
-    stype: &StringlyType,
-  ) -> Option<Type<'ctx>> {
+    name: Option<String>,
+    ret_ty: Type<'ctx>,
+  ) -> Function<'ctx> {
+    let value = FunctionValue { ret_ty };
+    if let Some(name) = name {
+      Function(self.funcs.insert(name, value))
+    } else {
+      Function(self.funcs.insert_anonymous(value))
+    }
+  }
+
+  pub fn get_type(&self, stype: &StringlyType) -> Option<Type<'ctx>> {
     match *stype {
       StringlyType::UserDefinedType(ref name) => {
         self.types.get(name).map(|t| Type(t))

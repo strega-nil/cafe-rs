@@ -3,8 +3,6 @@ extern crate unicode_xid;
 extern crate ucd;
 use self::unicode_normalization::{UnicodeNormalization,
                                   Recompositions};
-use self::unicode_xid::UnicodeXID;
-use self::ucd::Codepoint;
 
 use parse::{Location, Spanned};
 use std::str;
@@ -77,7 +75,7 @@ pub struct Lexer<'src> {
 impl<'src> Lexer<'src> {
   pub fn new(src: &str) -> Lexer {
     Lexer {
-      src: src.nfkc(),
+      src: src.nfc(),
       lookahead: None,
       current_loc: Location::new(),
     }
@@ -85,12 +83,12 @@ impl<'src> Lexer<'src> {
 
   #[inline]
   fn is_start_of_ident(c: char) -> bool {
-    UnicodeXID::is_xid_start(c) || c == '_'
+    unicode_xid::UnicodeXID::is_xid_start(c) || c == '_'
   }
 
   #[inline]
   fn is_ident(c: char) -> bool {
-    UnicodeXID::is_xid_continue(c)
+    unicode_xid::UnicodeXID::is_xid_continue(c)
   }
 
   #[inline]
@@ -100,7 +98,7 @@ impl<'src> Lexer<'src> {
 
   #[inline]
   fn is_whitespace(c: char) -> bool {
-    c.is_whitespace()
+    ucd::Codepoint::is_whitespace(c)
   }
 
   fn getc(&mut self) -> Option<(char, Location)> {
@@ -206,43 +204,35 @@ impl<'src> Lexer<'src> {
             Ok(span!(TokenVariant::ColonColon, loc, end_loc))
           }
           _ => {
-            Err(span!(
-            LexerErrorVariant::ReservedToken(":"),
-            loc,
-            loc,
-          ))
+            Err(
+              span!(LexerErrorVariant::ReservedToken(":"), loc, loc,),
+            )
           }
         }
       }
       ',' => {
-        Err(span!(
-          LexerErrorVariant::ReservedToken(","),
-          loc,
-          loc,
-        ))
+        Err(span!(LexerErrorVariant::ReservedToken(","), loc, loc,))
       }
       '&' => {
         match self.peekc() {
           Some(('&', end_loc)) => {
             Err(span!(
-            LexerErrorVariant::ReservedToken("&&"),
-            loc,
-            end_loc,
-          ))
+              LexerErrorVariant::ReservedToken("&&"),
+              loc,
+              end_loc,
+            ))
           }
           Some(('=', end_loc)) => {
             Err(span!(
-            LexerErrorVariant::ReservedToken("&="),
-            loc,
-            end_loc,
-          ))
+              LexerErrorVariant::ReservedToken("&="),
+              loc,
+              end_loc,
+            ))
           }
           _ => {
-            Err(span!(
-            LexerErrorVariant::ReservedToken("&"),
-            loc,
-            loc,
-          ))
+            Err(
+              span!(LexerErrorVariant::ReservedToken("&"), loc, loc,),
+            )
           }
         }
       }
@@ -251,24 +241,22 @@ impl<'src> Lexer<'src> {
           // eventually, concat operator
           Some(('+', end_loc)) => {
             Err(span!(
-            LexerErrorVariant::ReservedToken("++"),
-            loc,
-            end_loc,
-          ))
+              LexerErrorVariant::ReservedToken("++"),
+              loc,
+              end_loc,
+            ))
           }
           Some(('=', end_loc)) => {
             Err(span!(
-            LexerErrorVariant::ReservedToken("+="),
-            loc,
-            end_loc,
-          ))
+              LexerErrorVariant::ReservedToken("+="),
+              loc,
+              end_loc,
+            ))
           }
           _ => {
-            Err(span!(
-            LexerErrorVariant::ReservedToken("+"),
-            loc,
-            loc,
-          ))
+            Err(
+              span!(LexerErrorVariant::ReservedToken("+"), loc, loc,),
+            )
           }
         }
       }
@@ -280,17 +268,15 @@ impl<'src> Lexer<'src> {
           }
           Some(('=', end_loc)) => {
             Err(span!(
-            LexerErrorVariant::ReservedToken("-="),
-            loc,
-            end_loc,
-          ))
+              LexerErrorVariant::ReservedToken("-="),
+              loc,
+              end_loc,
+            ))
           }
           _ => {
-            Err(span!(
-            LexerErrorVariant::ReservedToken("-"),
-            loc,
-            loc,
-          ))
+            Err(
+              span!(LexerErrorVariant::ReservedToken("-"), loc, loc,),
+            )
           }
         }
       }
@@ -298,17 +284,15 @@ impl<'src> Lexer<'src> {
         match self.peekc() {
           Some(('=', end_loc)) => {
             Err(span!(
-            LexerErrorVariant::ReservedToken("*="),
-            loc,
-            end_loc,
-          ))
+              LexerErrorVariant::ReservedToken("*="),
+              loc,
+              end_loc,
+            ))
           }
           _ => {
-            Err(span!(
-            LexerErrorVariant::ReservedToken("*"),
-            loc,
-            loc,
-          ))
+            Err(
+              span!(LexerErrorVariant::ReservedToken("*"), loc, loc,),
+            )
           }
         }
       }
@@ -325,11 +309,9 @@ impl<'src> Lexer<'src> {
             self.next_token()
           }
           _ => {
-            Err(span!(
-            LexerErrorVariant::ReservedToken("/"),
-            loc,
-            loc,
-          ))
+            Err(
+              span!(LexerErrorVariant::ReservedToken("/"), loc, loc,),
+            )
           }
         }
       }
@@ -339,17 +321,15 @@ impl<'src> Lexer<'src> {
           Some(('=', end_loc)) => {
             self.getc();
             Err(span!(
-            LexerErrorVariant::ReservedToken("<="),
-            loc,
-            end_loc,
-          ))
+              LexerErrorVariant::ReservedToken("<="),
+              loc,
+              end_loc,
+            ))
           }
           _ => {
-            Err(span!(
-            LexerErrorVariant::ReservedToken("<"),
-            loc,
-            loc,
-          ))
+            Err(
+              span!(LexerErrorVariant::ReservedToken("<"), loc, loc,),
+            )
           }
         }
       }
@@ -364,11 +344,9 @@ impl<'src> Lexer<'src> {
             ))
           }
           _ => {
-            Err(span!(
-              LexerErrorVariant::ReservedToken("="),
-              loc,
-              loc,
-            ))
+            Err(
+              span!(LexerErrorVariant::ReservedToken("="), loc, loc,),
+            )
           }
         }
       }
@@ -440,10 +418,9 @@ impl<'src> Lexer<'src> {
               string.push(c);
               end_loc = loc;
             } else if Self::is_start_of_ident(c) {
-              return Err(span!(
-                LexerErrorVariant::IdentAfterIntLiteral,
-                loc,
-              ));
+              return Err(
+                span!(LexerErrorVariant::IdentAfterIntLiteral, loc,),
+              );
             } else {
               break;
             }
@@ -455,11 +432,7 @@ impl<'src> Lexer<'src> {
           "we pushed something which wasn't 0...9 onto a string",
         );
 
-        Ok(span!(
-          TokenVariant::Integer(value),
-          loc,
-          end_loc,
-        ))
+        Ok(span!(TokenVariant::Integer(value), loc, end_loc,))
       }
 
       ch => Err(span!(LexerErrorVariant::UnknownChar(ch), loc)),

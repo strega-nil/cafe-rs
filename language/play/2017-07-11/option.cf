@@ -1,0 +1,6 @@
+option(t: type) {
+  type = variant {
+    some t,
+    none (),
+  };
+}

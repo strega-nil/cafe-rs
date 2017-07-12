@@ -1,8 +1,3 @@
-macro_rules! fl {
-  () => ((file!(), line!()));
-  ($line:expr) => ((file!(), $line));
-}
-
 macro_rules! span {
   ($tok:expr, $loc:expr $(,)*) => (
     $crate::parse::Spanned {

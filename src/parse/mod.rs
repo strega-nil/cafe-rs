@@ -3,7 +3,7 @@ pub mod lexer;
 use self::lexer::{Lexer, LexerError, LexerErrorVariant, Token,
                   TokenVariant};
 use ast::{ExpressionVariant, Expression, StatementVariant,
-          Statement, ValueVariant, Block_, Block, StringlyType};
+          Statement, FunctionValue, Block_, Block, StringlyType};
 
 use std::str;
 
@@ -41,11 +41,7 @@ pub struct Spanned<T> {
 }
 
 impl<T> Spanned<T> {
-  fn new(
-    thing: T,
-    start: Location,
-    end: Option<Location>,
-  ) -> Self {
+  fn new(thing: T, start: Location, end: Option<Location>) -> Self {
     Spanned { thing, start, end }
   }
 }
@@ -56,7 +52,7 @@ enum ExprOrStmt {
 }
 
 pub enum ItemVariant {
-  Value(ValueVariant),
+  Function(FunctionValue),
   //Type(Type),
 }
 pub type Item = Spanned<ItemVariant>;
@@ -203,9 +199,7 @@ impl<'src> Parser<'src> {
   fn parse_type(&mut self) -> ParserResult<StringlyType> {
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
-      TokenVariant::Ident(s) => {
-        Ok(StringlyType::UserDefinedType(s))
-      }
+      TokenVariant::Ident(s) => Ok(StringlyType::UserDefinedType(s)),
       //TokenVariant::And => unimplemented!(),
       //TokenVariant::Star => unimplemented!(),
       TokenVariant::OpenParen => unimplemented!(),
@@ -265,7 +259,8 @@ impl<'src> Parser<'src> {
       _ => {
         let expr = self.parse_expr()?;
         if let Spanned {
-          thing: TokenVariant::CloseBrace, ..
+          thing: TokenVariant::CloseBrace,
+          ..
         } = *self.peek_token()?
         {
           return Ok(ExprOrStmt::Expr(expr));
@@ -278,11 +273,9 @@ impl<'src> Parser<'src> {
             ..
           } => {
             let start = expr.start;
-            return Ok(ExprOrStmt::Stmt(Spanned::new(
-              StatementVariant::Expr(expr),
-              start,
-              end,
-            )));
+            return Ok(ExprOrStmt::Stmt(
+              Spanned::new(StatementVariant::Expr(expr), start, end),
+            ));
           }
           Spanned { thing, start, end } => {
             unexpected_token!(thing, ExprEnd, start, end)
@@ -328,7 +321,7 @@ impl<'src> Parser<'src> {
           }
         };
         let blk = self.parse_block()?;
-        let thing = ItemVariant::Value(ValueVariant::Function {
+        let thing = ItemVariant::Function(FunctionValue {
           //params: vec![],
           ret_ty,
           blk: blk.thing,
