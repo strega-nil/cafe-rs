@@ -306,11 +306,14 @@ impl<'src> Parser<'src> {
 
   fn parse_item_definition(
     &mut self,
-  ) -> ParserResult<Spanned<ItemVariant>> {
+  ) -> ParserResult<(String, Item)> {
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
       TokenVariant::KeywordFn => {
-        let start = eat_token!(self, OpenParen);
+        let name = self.parse_ident()?;
+        // type parameters
+        eat_token!(self, ColonColon);
+        eat_token!(self, OpenParen);
         // argument list
         eat_token!(self, CloseParen);
         let ret_ty = {
@@ -326,19 +329,17 @@ impl<'src> Parser<'src> {
           ret_ty,
           blk: blk.thing,
         });
-        Ok(Spanned::new(thing, start.start, blk.end))
+        Ok((name, Spanned::new(thing, start, blk.end)))
       }
       tok => unexpected_token!(tok, Item, start, end),
     }
   }
 
   pub fn next_item(&mut self) -> ParserResult<(String, Item)> {
-    let name = allow_eof!(self.parse_ident())?;
-    let sp = eat_token!(self, ColonColon);
     /*
       parse type parameters here
     */
-    let def = self.parse_item_definition()?;
-    Ok((name, Spanned::new(def.thing, sp.start, def.end)))
+    let item = allow_eof!(self.parse_item_definition())?;
+    Ok(item)
   }
 }
