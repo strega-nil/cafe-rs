@@ -51,12 +51,15 @@ fn main() {
 
   let ast = Ast::new(&file).unwrap();
   if print_ast {
-    ast.print();
+    println!("    ===   AST   ===    ");
+    println!("{}", ast);
   }
   let ctxt = mir::MirCtxt::new();
   let mir = Mir::new(&ctxt, ast);
   if print_mir {
+    println!("    ===   MIR   ===    ");
     mir.print();
   }
+  println!("    ===   RUN   ===    ");
   println!("{:?}", mir.run());
 }

@@ -1,0 +1,63 @@
+// using ocaml-y syntax, because this idea is from ocaml
+
+type ordering :: enum {
+  less,
+  equal,
+  greater,
+}
+
+type :: ordering {
+  fn reverse(self: ref self) -> self {
+    match self {
+      ordering::less => { ordering::greater }
+      ordering::greater => { ordering::less }
+      ordering::equal => { ordering::equal }
+    }
+  }
+}
+
+type ord(t) :: class {
+  fn compare(lhs: ref t, rhs: ref t) -> ordering;
+}
+
+// default impl
+// same rules as rust, basically, for orphan impls
+type :: ord(i32) {
+  fn compare(lhs: ref i32, rhs: ref i32) -> ordering {
+    if lhs < rhs {
+      ordering::less
+    } else if lhs > rhs {
+      ordering::greater
+    } else {
+      ordering::equal
+    }
+  }
+}
+
+// non-default impl
+// you can define these anywhere
+type backwards(
+  t <: ord, // by default, uses the default ord for the type
+) :: ord(t) {
+  fn compare(lhs: ref t, rhs: ref t) -> ordering {
+    ord(t)::compare(lhs, rhs).reverse()
+  }
+}
+
+// how to use these:
+fn ge(t <: ord) => (lhs: ref t, rhs: ref t) -> bool {
+  match ord::(t)::compare(lhs, rhs) {
+    ordering::greater | ordering::equal => { true }
+    ordering::les => { false }
+  }
+}
+
+fn main() {
+  let _ = ge(0, 1); // false
+  let _ = ge::(i32 <: backwards(ord(i32)))::(0, 1); // true
+  // or something like this
+  // the syntax definitely needs work
+  // but I know I like these semantics
+  // this would also allow you to use, say, floats as ord, by defining
+  // your own named ord for floats
+}

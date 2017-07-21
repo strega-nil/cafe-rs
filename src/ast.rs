@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{self, Display};
 
 use mir::{self, Mir};
 use parse::{ItemVariant, Parser, ParserError, ParserErrorVariant,
@@ -55,12 +56,25 @@ pub type Function = Spanned<FunctionValue>;
 
 impl Function {
   fn build_mir(&self, name: &str, mir: &Mir) {
-    match self.thing {
-      FunctionValue { ref ret_ty, blk: _ } => {
-        let ret_ty = mir.get_type(ret_ty).unwrap();
-        mir.insert_function(Some(name.to_owned()), ret_ty)
+    let FunctionValue { ref ret_ty, ref blk } = self.thing;
+    let ret_ty = mir.get_type(ret_ty).unwrap();
+    let mut bb = mir::BlockData { stmts: Vec::new() };
+    let rhs = match blk.expr.thing {
+      ExpressionVariant::IntLiteral(n) => {
+        n as i32
+      }
+      ExpressionVariant::Nullary => {
+        panic!("man, you know this doesn't work")
       }
     };
+    bb.stmts.push(mir::Statement::Assign {
+      lhs: mir::Reference::ret(),
+      rhs: mir::Value::Literal(rhs),
+    });
+    bb.stmts.push(mir::Statement::Return);
+    // NOTE(ubsan): this should probably store the result of this call
+    // somwhere
+    mir.insert_function(Some(name.to_owned()), ret_ty, vec![bb]);
   }
 }
 
@@ -128,12 +142,6 @@ impl Ast {
     }
     Ok(Ast { funcs })
   }
-
-  pub fn print(&self) {
-    for value in &self.funcs {
-      println!("{} :: {:#?}", value.0, value.1.thing);
-    }
-  }
 }
 
 impl Ast {
@@ -150,5 +158,46 @@ impl Ast {
     mir.insert_type(
       Some(String::from("s32")), mir::TypeVariant::s32()
     );
+  }
+}
+
+impl Display for StringlyType {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match *self {
+      StringlyType::UserDefinedType(ref s) => write!(f, "{}", s),
+      _ => panic!(),
+    }
+  }
+}
+
+impl Display for StatementVariant {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match *self {
+      StatementVariant::Expr(ref e) => write!(f, "{}", e.thing),
+    }
+  }
+}
+
+impl Display for ExpressionVariant {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match *self {
+      ExpressionVariant::IntLiteral(ref i) => write!(f, "{}", i),
+      ExpressionVariant::Nullary => write!(f, "()"),
+    }
+  }
+}
+
+impl Display for Ast {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    for (name, func) in &self.funcs {
+      let ref func = func.thing;
+      writeln!(f, "fn {}() -> {} {{", name, func.ret_ty)?;
+      for stmt in &func.blk.statements {
+        writeln!(f, "  {};", stmt.thing)?;
+      }
+      writeln!(f, "  {}", func.blk.expr.thing)?;
+      writeln!(f, "}}")?;
+    }
+    Ok(())
   }
 }

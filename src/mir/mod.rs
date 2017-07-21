@@ -34,10 +34,39 @@ impl TypeVariant {
   }
 }
 
+// TODO(ubsan): these probably should not be pub
+#[derive(Debug)]
+pub struct Reference(u32);
+
+impl Reference {
+  pub fn ret() -> Self {
+    Reference(0)
+  }
+}
+
+#[derive(Debug)]
+pub enum Value {
+  Literal(i32),
+}
+
+#[derive(Debug)]
+pub enum Statement {
+  Assign {
+    lhs: Reference,
+    rhs: Value,
+  },
+  Return,
+}
+
+#[derive(Debug)]
+pub struct BlockData {
+  pub stmts: Vec<Statement>,
+}
+
 #[derive(Debug)]
 struct FunctionValue<'ctx> {
   ret_ty: Type<'ctx>,
-  //blks: Vec<BlockData>,
+  blks: Vec<BlockData>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -106,12 +135,17 @@ impl<'ctx> Mir<'ctx> {
     }
   }
 
+  // TODO(ubsan): FUNCTION BUILDERS !!!!!!!!!!
   pub fn insert_function(
     &self,
     name: Option<String>,
     ret_ty: Type<'ctx>,
+    blks: Vec<BlockData>,
   ) -> Function<'ctx> {
-    let value = FunctionValue { ret_ty };
+    let value = FunctionValue {
+      ret_ty,
+      blks,
+    };
     if let Some(name) = name {
       Function(self.funcs.insert(name, value))
     } else {
