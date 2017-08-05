@@ -1,4 +1,4 @@
-fn main :: () -> s32 {
+main :: () -> s32 {
   1;
   1
 }
@@ -6,14 +6,14 @@ fn main :: () -> s32 {
 /*
 
 // note: type generics
-fn foo(t: type) :: (x: t) {
+foo :: (x: 't) {
 }
 
-fn main :: () {
+main :: () {
   fib_log(15)
 }
 
-fn fib_log :: (n: u32) {
+fib_log :: (n: u32) {
   if n == 0 {
     log(fib(0))
   } else {
@@ -22,7 +22,7 @@ fn fib_log :: (n: u32) {
   }
 }
 
-fn fib :: (n: u32) -> u32 {
+fib :: (n: u32) -> u32 {
   if n < 2 {
     n
   } else {

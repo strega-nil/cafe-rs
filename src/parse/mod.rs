@@ -2,9 +2,11 @@ pub mod lexer;
 
 use self::lexer::{Lexer, LexerError, LexerErrorVariant, Token,
                   TokenVariant};
-use ast::{ExpressionVariant, Expression, StatementVariant,
-          Statement, FunctionValue, Block_, Block, StringlyType};
+use ast::{Block, Block_, Expression, ExpressionVariant,
+          FunctionValue, Statement, StatementVariant,
+          StringlyType};
 
+use std::ops::{Deref, DerefMut};
 use std::str;
 
 #[derive(Copy, Clone, Debug)]
@@ -41,8 +43,24 @@ pub struct Spanned<T> {
 }
 
 impl<T> Spanned<T> {
-  fn new(thing: T, start: Location, end: Option<Location>) -> Self {
+  fn new(
+    thing: T,
+    start: Location,
+    end: Option<Location>,
+  ) -> Self {
     Spanned { thing, start, end }
+  }
+}
+
+impl<T> Deref for Spanned<T> {
+  type Target = T;
+  fn deref(&self) -> &T {
+    &self.thing
+  }
+}
+impl<T> DerefMut for Spanned<T> {
+  fn deref_mut(&mut self) -> &mut T {
+    &mut self.thing
   }
 }
 
@@ -199,7 +217,9 @@ impl<'src> Parser<'src> {
   fn parse_type(&mut self) -> ParserResult<StringlyType> {
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
-      TokenVariant::Ident(s) => Ok(StringlyType::UserDefinedType(s)),
+      TokenVariant::Ident(s) => {
+        Ok(StringlyType::UserDefinedType(s))
+      }
       //TokenVariant::And => unimplemented!(),
       //TokenVariant::Star => unimplemented!(),
       TokenVariant::OpenParen => unimplemented!(),
@@ -225,29 +245,23 @@ impl<'src> Parser<'src> {
         thing: TokenVariant::CloseBrace,
         start,
         ..
-      } => {
-        Ok(Spanned::new(
-          ExpressionVariant::Nullary,
+      } => Ok(Spanned::new(
+        ExpressionVariant::Nullary,
+        start,
+        Some(start),
+      )),
+      _ => match self.get_token()? {
+        Spanned {
+          thing: TokenVariant::Integer(u),
           start,
-          Some(start),
-        ))
-      }
-      _ => {
-        match self.get_token()? {
-          Spanned {
-            thing: TokenVariant::Integer(u),
-            start,
-            end,
-          } => {
-            Ok(Spanned::new(
-              ExpressionVariant::IntLiteral(u),
-              start,
-              end,
-            ))
-          }
-          tok => panic!("unimplemented expression: {:?}", tok),
-        }
-      }
+          end,
+        } => Ok(Spanned::new(
+          ExpressionVariant::IntLiteral(u),
+          start,
+          end,
+        )),
+        tok => panic!("unimplemented expression: {:?}", tok),
+      },
     }
   }
 
@@ -273,9 +287,11 @@ impl<'src> Parser<'src> {
             ..
           } => {
             let start = expr.start;
-            return Ok(ExprOrStmt::Stmt(
-              Spanned::new(StatementVariant::Expr(expr), start, end),
-            ));
+            return Ok(ExprOrStmt::Stmt(Spanned::new(
+              StatementVariant::Expr(expr),
+              start,
+              end,
+            )));
           }
           Spanned { thing, start, end } => {
             unexpected_token!(thing, ExprEnd, start, end)
@@ -309,9 +325,7 @@ impl<'src> Parser<'src> {
   ) -> ParserResult<(String, Item)> {
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
-      TokenVariant::KeywordFn => {
-        let name = self.parse_ident()?;
-        // type parameters
+      TokenVariant::Ident(name) => {
         eat_token!(self, ColonColon);
         eat_token!(self, OpenParen);
         // argument list
@@ -320,7 +334,7 @@ impl<'src> Parser<'src> {
           if let Some(_) = maybe_eat_token!(self, SkinnyArrow) {
             self.parse_type()?
           } else {
-            StringlyType::Tuple(vec![])
+            StringlyType::Unit
           }
         };
         let blk = self.parse_block()?;

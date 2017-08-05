@@ -11,7 +11,8 @@ pub struct Arena<T> {
 
 impl<T> Arena<T> {
   pub fn new() -> Self {
-    let mut inner = (vec![Vec::with_capacity(10)], ptr::null_mut());
+    let mut inner =
+      (vec![Vec::with_capacity(10)], ptr::null_mut());
     inner.1 = &mut inner.0[0];
     Arena {
       arena: Mutex::new(inner),

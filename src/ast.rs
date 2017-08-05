@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::fmt::{self, Display};
 
 use mir::{self, Mir};
-use parse::{ItemVariant, Parser, ParserError, ParserErrorVariant,
-            Spanned};
+use parse::{ItemVariant, Parser, ParserError,
+            ParserErrorVariant, Spanned};
 use std::collections::HashSet;
 
 #[derive(Clone, Debug)]
@@ -18,12 +18,12 @@ pub enum Category {
 // user defined types will be strings
 #[derive(Clone, Debug)]
 pub enum StringlyType {
-  Tuple(Vec<StringlyType>),
   #[allow(dead_code)]
   Reference(Category, Box<StringlyType>),
   #[allow(dead_code)]
   Pointer(Category, Box<StringlyType>),
   UserDefinedType(String),
+  Unit,
 }
 
 #[derive(Debug)]
@@ -55,26 +55,39 @@ pub struct FunctionValue {
 pub type Function = Spanned<FunctionValue>;
 
 impl Function {
-  fn build_mir(&self, name: &str, mir: &Mir) {
-    let FunctionValue { ref ret_ty, ref blk } = self.thing;
-    let ret_ty = mir.get_type(ret_ty).unwrap();
-    let mut bb = mir::BlockData { stmts: Vec::new() };
-    let rhs = match blk.expr.thing {
-      ExpressionVariant::IntLiteral(n) => {
-        n as i32
-      }
-      ExpressionVariant::Nullary => {
-        panic!("man, you know this doesn't work")
-      }
-    };
-    bb.stmts.push(mir::Statement::Assign {
-      lhs: mir::Reference::ret(),
-      rhs: mir::Value::Literal(rhs),
-    });
-    bb.stmts.push(mir::Statement::Return);
-    // NOTE(ubsan): this should probably store the result of this call
-    // somwhere
-    mir.insert_function(Some(name.to_owned()), ret_ty, vec![bb]);
+  fn build_mir<'ctx>(
+    &self,
+    name: &str,
+    mir: &Mir<'ctx>,
+  ) -> mir::Function<'ctx> {
+    let s32 = mir.get_type(&self.thing.ret_ty).unwrap();
+    let mut builder =
+      mir.get_function_builder(Some(name.to_owned()), s32);
+    let enter_block = builder.entrance();
+    for stmt in &self.blk.statements {
+      let tmp = builder.anonymous_local(s32);
+      let mir_val = match **stmt {
+        StatementVariant::Expr(ref e) => match **e {
+          ExpressionVariant::IntLiteral(i) => {
+            mir::Value::Literal(i as i32)
+          }
+          ExpressionVariant::Nullary => {
+            panic!("non-s32 types not yet supported")
+          }
+        },
+      };
+      builder.add_stmt(enter_block, tmp, mir_val);
+    }
+    if let ExpressionVariant::IntLiteral(i) = *self.blk.expr {
+      builder.add_stmt(
+        enter_block,
+        mir::Reference::ret(),
+        mir::Value::Literal(i as i32),
+      );
+    } else {
+      panic!()
+    }
+    mir.insert_function(builder)
   }
 }
 
@@ -156,7 +169,8 @@ impl Ast {
 
   fn prelude_types(mir: &Mir) {
     mir.insert_type(
-      Some(String::from("s32")), mir::TypeVariant::s32()
+      Some(String::from("s32")),
+      mir::TypeVariant::s32(),
     );
   }
 }
@@ -191,7 +205,7 @@ impl Display for Ast {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     for (name, func) in &self.funcs {
       let ref func = func.thing;
-      writeln!(f, "fn {}() -> {} {{", name, func.ret_ty)?;
+      writeln!(f, "{} :: () -> {} {{", name, func.ret_ty)?;
       for stmt in &func.blk.statements {
         writeln!(f, "  {};", stmt.thing)?;
       }
