@@ -1,13 +1,13 @@
 main :: () -> s32 {
-  1;
-  1
+  foo()
+}
+
+foo :: () -> s32 {
+  x: s32 = 42;
+  x
 }
 
 /*
-
-// note: type generics
-foo :: (x: 't) {
-}
 
 main :: () {
   fib_log(15)

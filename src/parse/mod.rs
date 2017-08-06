@@ -235,68 +235,127 @@ impl<'src> Parser<'src> {
   }
 
   fn parse_expr(&mut self) -> ParserResult<Expression> {
-    match *self.peek_token()? {
-      Spanned {
-        thing: TokenVariant::Semicolon,
-        start,
-        ..
-      } |
-      Spanned {
-        thing: TokenVariant::CloseBrace,
-        start,
-        ..
-      } => Ok(Spanned::new(
+    fn end_of_expr(s: &Token) -> (bool, Location) {
+      match **s {
+        TokenVariant::Semicolon | TokenVariant::CloseBrace => {
+          (true, s.start)
+        }
+        _ => {
+          (false, s.start)
+        }
+      }
+    }
+    if let (true, start) = end_of_expr(self.peek_token()?) {
+      return Ok(Spanned::new(
         ExpressionVariant::Nullary,
         start,
         Some(start),
-      )),
-      _ => match self.get_token()? {
-        Spanned {
-          thing: TokenVariant::Integer(u),
-          start,
-          end,
-        } => Ok(Spanned::new(
+      ));
+    }
+
+    let Spanned { thing, start, end } = self.get_token()?;
+    match thing {
+      TokenVariant::Integer(u) => {
+        Ok(Spanned::new(
           ExpressionVariant::IntLiteral(u),
           start,
           end,
-        )),
-        tok => panic!("unimplemented expression: {:?}", tok),
-      },
+        ))
+      }
+      TokenVariant::Ident(s) => {
+        // hoo boy I need NLLs
+        let (is_end, is_call) = {
+          let next = self.peek_token()?;
+          let conds = (
+            **next == TokenVariant::Colon || end_of_expr(next).0,
+            **next == TokenVariant::OpenParen,
+          );
+          if !conds.0 && !conds.1 {
+            panic!("unimplemented ident follow: {:?}", next)
+          }
+          conds
+        };
+        if is_end {
+          Ok(Spanned::new(
+            ExpressionVariant::Variable(s),
+            start,
+            end,
+          ))
+        } else if is_call {
+          self.get_token()?;
+          // parse arguments
+          let Spanned { end, .. } = eat_token!(self, CloseParen);
+          let next = self.peek_token()?;
+          if end_of_expr(next).0 {
+            Ok(Spanned::new(
+              ExpressionVariant::Call {
+                callee: s,
+                // args: ...,
+              },
+              start,
+              end,
+            ))
+          } else {
+            panic!("unimplemented call follow: {:?}", next)
+          }
+        } else {
+          unreachable!()
+        }
+      }
+      tok => {
+        panic!(
+          "unimplemented expression: {:?}",
+          Spanned { thing: tok, start, end },
+        )
+      }
     }
   }
 
   fn parse_expr_or_stmt(&mut self) -> ParserResult<ExprOrStmt> {
-    match *self.peek_token()? {
-      /*Spanned { thing: TokenVariant::KeywordLet, .. } => {
-        unimplemented!()
-      },*/
-      _ => {
-        let expr = self.parse_expr()?;
-        if let Spanned {
-          thing: TokenVariant::CloseBrace,
-          ..
-        } = *self.peek_token()?
-        {
-          return Ok(ExprOrStmt::Expr(expr));
-        }
+    let expr = self.parse_expr()?;
+    { // NLLs pls
+      let Spanned { ref thing, .. } =
+        *self.peek_token()?;
+      if let TokenVariant::CloseBrace = *thing {
+        return Ok(ExprOrStmt::Expr(expr));
+      }
+    }
 
-        match self.get_token()? {
-          Spanned {
-            thing: TokenVariant::Semicolon,
-            end,
-            ..
-          } => {
-            let start = expr.start;
-            return Ok(ExprOrStmt::Stmt(Spanned::new(
-              StatementVariant::Expr(expr),
-              start,
-              end,
-            )));
-          }
-          Spanned { thing, start, end } => {
-            unexpected_token!(thing, ExprEnd, start, end)
-          }
-        }
+    let Spanned { thing, start, end } = self.get_token()?;
+    match thing {
+      TokenVariant::Semicolon => {
+        let start = expr.start;
+        Ok(ExprOrStmt::Stmt(Spanned::new(
+          StatementVariant::Expr(expr),
+          start,
+          end,
+        )))
+      }
+      // local variable
+      TokenVariant::Colon => {
+        let name =
+          if let ExpressionVariant::Variable(s) = expr.thing {
+            s
+          } else {
+            panic!("invalid thing as a variable name");
+          };
+        let ty = self.parse_type()?;
+        // I'll allow non-initialized later
+        eat_token!(self, Equals);
+        let initializer = self.parse_expr()?;
+        let Spanned { end, .. } = eat_token!(self, Semicolon);
+        Ok(ExprOrStmt::Stmt(Spanned::new(
+          StatementVariant::Local {
+            name,
+            ty,
+            initializer,
+          },
+          expr.start,
+          end,
+        )))
+      }
+      _ => {
+        unexpected_token!(thing, ExprEnd, start, end)
       }
     }
   }

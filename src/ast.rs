@@ -30,11 +30,45 @@ pub enum StringlyType {
 pub enum ExpressionVariant {
   Nullary,
   IntLiteral(u64),
+  Variable(String),
+  Call {
+    callee: String,
+    //args: ...,
+  }
+}
+impl ExpressionVariant {
+  fn to_mir(
+    &self,
+    funcs: &HashMap<String, mir::FunctionDecl>,
+    locals: &HashMap<String, mir::Reference>,
+  ) -> mir::Value {
+    match *self {
+      ExpressionVariant::IntLiteral(i) => {
+        mir::Value::Literal(i as i32)
+      }
+      ExpressionVariant::Variable(ref name) => {
+        // will panic for now - should be caught in typeck
+        mir::Value::Reference(locals[name])
+      }
+      ExpressionVariant::Call { ref callee } => {
+        let callee = funcs[callee];
+        mir::Value::Call { callee }
+      }
+      ExpressionVariant::Nullary => {
+        panic!("non-s32 types not yet supported")
+      }
+    }
+  }
 }
 pub type Expression = Spanned<ExpressionVariant>;
 #[derive(Debug)]
 pub enum StatementVariant {
   Expr(Expression),
+  Local {
+    name: String,
+    ty: StringlyType,
+    initializer: Expression,
+  },
 }
 pub type Statement = Spanned<StatementVariant>;
 
@@ -57,37 +91,45 @@ pub type Function = Spanned<FunctionValue>;
 impl Function {
   fn build_mir<'ctx>(
     &self,
-    name: &str,
-    mir: &Mir<'ctx>,
-  ) -> mir::Function<'ctx> {
+    decl: mir::FunctionDecl,
+    funcs: &HashMap<String, mir::FunctionDecl>,
+    mir: &mut Mir<'ctx>,
+  ) {
     let s32 = mir.get_type(&self.thing.ret_ty).unwrap();
+
+    let mut locals: HashMap<String, mir::Reference> =
+      HashMap::new();
     let mut builder =
-      mir.get_function_builder(Some(name.to_owned()), s32);
+      mir.get_function_builder(decl, s32);
+
     let enter_block = builder.entrance();
     for stmt in &self.blk.statements {
-      let tmp = builder.anonymous_local(s32);
-      let mir_val = match **stmt {
-        StatementVariant::Expr(ref e) => match **e {
-          ExpressionVariant::IntLiteral(i) => {
-            mir::Value::Literal(i as i32)
-          }
-          ExpressionVariant::Nullary => {
-            panic!("non-s32 types not yet supported")
-          }
+      match **stmt {
+        StatementVariant::Expr(ref e) => {
+          let tmp = builder.add_anonymous_local(s32);
+          let mir_val = e.to_mir(funcs, &locals);
+          builder.add_stmt(enter_block, tmp, mir_val);
         },
+        StatementVariant::Local {
+          ref name,
+          ref ty,
+          ref initializer,
+        } => {
+          let ty = mir.get_type(ty).unwrap();
+          let ref_ = builder.add_local(name.clone(), ty);
+          builder.add_stmt(
+            enter_block,
+            ref_,
+            initializer.to_mir(funcs, &locals)
+          );
+          locals.insert(name.clone(), ref_);
+        }
       };
-      builder.add_stmt(enter_block, tmp, mir_val);
     }
-    if let ExpressionVariant::IntLiteral(i) = *self.blk.expr {
-      builder.add_stmt(
-        enter_block,
-        mir::Reference::ret(),
-        mir::Value::Literal(i as i32),
-      );
-    } else {
-      panic!()
-    }
-    mir.insert_function(builder)
+    let mir_val = self.blk.expr.to_mir(funcs, &locals);
+    let ret = mir::Reference::ret();
+    builder.add_stmt(enter_block, ret, mir_val);
+    mir.add_function_definition(builder)
   }
 }
 
@@ -160,10 +202,15 @@ impl Ast {
 impl Ast {
   pub fn build_mir<'ctx>(&mut self, mir: &mut Mir<'ctx>) {
     Self::prelude_types(mir);
+    let mut mir_funcs: HashMap<String, mir::FunctionDecl> =
+      HashMap::new();
+    for (name, _) in &self.funcs {
+      let decl = mir.add_function_decl(Some(name.to_owned()));
+      mir_funcs.insert(name.to_owned(), decl);
+    }
     for (name, func) in &self.funcs {
-      let mut working = HashSet::new();
-      working.insert(name);
-      func.build_mir(name, mir);
+      let decl = mir_funcs[name];
+      func.build_mir(decl, &mir_funcs, mir);
     }
   }
 
@@ -187,7 +234,16 @@ impl Display for StringlyType {
 impl Display for StatementVariant {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match *self {
-      StatementVariant::Expr(ref e) => write!(f, "{}", e.thing),
+      StatementVariant::Expr(ref e) => {
+        write!(f, "{}", **e)
+      }
+      StatementVariant::Local {
+        ref name,
+        ref ty,
+        ref initializer,
+      } => {
+        write!(f, "{}: {} = {}", name, ty, **initializer)
+      }
     }
   }
 }
@@ -196,6 +252,10 @@ impl Display for ExpressionVariant {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match *self {
       ExpressionVariant::IntLiteral(ref i) => write!(f, "{}", i),
+      ExpressionVariant::Variable(ref s) => write!(f, "{}", s),
+      ExpressionVariant::Call { ref callee } => {
+        write!(f, "{}()", callee)
+      }
       ExpressionVariant::Nullary => write!(f, "()"),
     }
   }

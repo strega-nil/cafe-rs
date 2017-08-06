@@ -34,9 +34,6 @@ pub enum TokenVariant {
   OpenParen,
   CloseParen,
 
-  // Statement
-  //KeywordLet,
-
   // Expression
   //KeywordTrue,
   //KeywordFalse,
@@ -53,9 +50,9 @@ pub enum TokenVariant {
   //LessThanEquals,
 
   // Declaration/Types/Assignment
-  //Colon,
+  Colon,
   ColonColon,
-  //Equals,
+  Equals,
   SkinnyArrow,
 
   // Separators
@@ -202,9 +199,16 @@ impl<'src> Lexer<'src> {
           self.getc();
           Ok(span!(TokenVariant::ColonColon, loc, end_loc))
         }
-        _ => Err(
-          span!(LexerErrorVariant::ReservedToken(":"), loc, loc),
-        ),
+        Some(('=', end_loc)) => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken(":="),
+            loc,
+            end_loc,
+          ))
+        }
+        _ => {
+          Ok(span!(TokenVariant::Colon, loc, loc))
+        }
       },
       ',' => Err(
         span!(LexerErrorVariant::ReservedToken(","), loc, loc),
@@ -306,9 +310,9 @@ impl<'src> Lexer<'src> {
             end_loc,
           ))
         }
-        _ => Err(
-          span!(LexerErrorVariant::ReservedToken("="), loc, loc),
-        ),
+        _ => {
+          Ok(span!(TokenVariant::Equals, loc, loc))
+        }
       },
       c if Self::is_start_of_ident(c) => {
         // ident

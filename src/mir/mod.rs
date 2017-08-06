@@ -41,19 +41,23 @@ impl Display for BuiltinType {
 }
 
 #[derive(Debug)]
-pub enum TypeVariant {
+pub enum TypeVariant<'tcx> {
   Builtin(BuiltinType),
+  __LifetimeHolder(::std::marker::PhantomData<&'tcx ()>),
 }
-impl TypeVariant {
+impl<'tcx> TypeVariant<'tcx> {
   pub fn s32() -> Self {
     TypeVariant::Builtin(BuiltinType::SInt(IntSize::I32))
   }
 }
-impl Display for TypeVariant {
+impl<'tcx> Display for TypeVariant<'tcx> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match *self {
       TypeVariant::Builtin(ref builtin) => {
         write!(f, "{}", builtin)
+      }
+      TypeVariant::__LifetimeHolder(_) => {
+        panic!()
       }
     }
   }
@@ -71,6 +75,10 @@ impl Reference {
 #[derive(Copy, Clone, Debug)]
 pub enum Value {
   Literal(i32),
+  Reference(Reference),
+  Call {
+    callee: FunctionDecl,
+  }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -105,7 +113,7 @@ struct FunctionValue<'ctx> {
 
 #[derive(Debug)]
 pub struct FunctionBuilder<'ctx> {
-  name: Option<String>,
+  decl: FunctionDecl,
   ret_ty: Type<'ctx>,
   locals: Vec<Type<'ctx>>,
   bindings: Vec<(Option<String>, Type<'ctx>)>,
@@ -113,7 +121,7 @@ pub struct FunctionBuilder<'ctx> {
 }
 
 impl<'ctx> FunctionBuilder<'ctx> {
-  fn new(name: Option<String>, ret_ty: Type<'ctx>) -> Self {
+  fn new(decl: FunctionDecl, ret_ty: Type<'ctx>) -> Self {
     let enter_block = BlockData {
       num: Block(0),
       stmts: vec![],
@@ -125,7 +133,7 @@ impl<'ctx> FunctionBuilder<'ctx> {
       term: Terminator::Return,
     };
     FunctionBuilder {
-      name,
+      decl,
       ret_ty,
       locals: vec![],
       bindings: vec![(Some(String::from("<return>")), ret_ty)],
@@ -149,7 +157,7 @@ impl<'ctx> FunctionBuilder<'ctx> {
     blk_data.stmts.push(Statement { lhs, rhs });
   }
 
-  pub fn anonymous_local(
+  pub fn add_anonymous_local(
     &mut self,
     ty: Type<'ctx>,
   ) -> Reference {
@@ -157,39 +165,47 @@ impl<'ctx> FunctionBuilder<'ctx> {
     self.bindings.push((None, ty));
     Reference((self.bindings.len() - 1) as u32)
   }
+
+  pub fn add_local(
+    &mut self,
+    name: String,
+    ty: Type<'ctx>,
+  ) -> Reference {
+    self.locals.push(ty);
+    self.bindings.push((Some(name), ty));
+    Reference((self.bindings.len() - 1) as u32)
+  }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct Type<'ctx>(&'ctx TypeVariant /* <'ctx> */);
+pub struct Type<'ctx>(&'ctx TypeVariant<'ctx>);
 #[derive(Copy, Clone, Debug)]
-pub struct Function<'ctx>(&'ctx FunctionValue<'ctx>);
+pub struct FunctionDecl(usize);
 
 // NOTE(ubsan): when I get namespacing, I should probably
 // use paths instead of names?
 
 pub struct MirCtxt<'a> {
-  types: ArenaMap<String, TypeVariant /*<'a>*/>,
-  funcs: ArenaMap<String, FunctionValue<'a>>,
+  types: ArenaMap<String, TypeVariant<'a>>,
 }
 
 impl<'a> MirCtxt<'a> {
   pub fn new() -> Self {
     MirCtxt {
       types: ArenaMap::new(),
-      funcs: ArenaMap::new(),
     }
   }
 }
 
 pub struct Mir<'ctx> {
-  funcs: &'ctx ArenaMap<String, FunctionValue<'ctx>>,
-  types: &'ctx ArenaMap<String, TypeVariant /*<'ctx>*/>,
+  funcs: Vec<(Option<String>, Option<FunctionValue<'ctx>>)>,
+  types: &'ctx ArenaMap<String, TypeVariant<'ctx>>,
 }
 
 impl<'ctx> Mir<'ctx> {
   pub fn new(ctx: &'ctx MirCtxt<'ctx>, mut ast: Ast) -> Self {
     let mut self_: Mir<'ctx> = Mir {
-      funcs: &ctx.funcs,
+      funcs: vec![],
       types: &ctx.types,
     };
 
@@ -199,7 +215,12 @@ impl<'ctx> Mir<'ctx> {
   }
 
   pub fn run(&self) -> i32 {
-    Runner::new(self).call("main")
+    for (i, &(ref name, _)) in self.funcs.iter().enumerate() {
+      if let Some("main") = name.as_ref().map(|s| &**s) {
+        return Runner::new(self).call(FunctionDecl(i));
+      }
+    }
+    panic!("no main function found")
   }
 }
 
@@ -207,7 +228,7 @@ impl<'ctx> Mir<'ctx> {
   pub fn insert_type(
     &self,
     name: Option<String>,
-    ty: TypeVariant, /* <'ctx> */
+    ty: TypeVariant<'ctx>,
   ) -> Type<'ctx> {
     if let Some(name) = name {
       Type(self.types.insert(name, ty))
@@ -216,29 +237,34 @@ impl<'ctx> Mir<'ctx> {
     }
   }
 
-  pub fn get_function_builder(
-    &self,
+  pub fn add_function_decl(
+    &mut self,
     name: Option<String>,
-    ret_ty: Type<'ctx>,
-  ) -> FunctionBuilder<'ctx> {
-    FunctionBuilder::new(name, ret_ty)
+  ) -> FunctionDecl {
+    self.funcs.push((name, None));
+    FunctionDecl(self.funcs.len() - 1)
   }
 
-  pub fn insert_function(
+  pub fn get_function_builder(
     &self,
+    decl: FunctionDecl,
+    ret_ty: Type<'ctx>,
+  ) -> FunctionBuilder<'ctx> {
+    FunctionBuilder::new(decl, ret_ty)
+  }
+
+  pub fn add_function_definition(
+    &mut self,
     builder: FunctionBuilder<'ctx>,
-  ) -> Function<'ctx> {
+  ) {
     let value = FunctionValue {
       ret_ty: builder.ret_ty,
       blks: builder.blks,
       locals: builder.locals,
       bindings: builder.bindings,
     };
-    if let Some(name) = builder.name {
-      Function(self.funcs.insert(name, value))
-    } else {
-      Function(self.funcs.insert_anonymous(value))
-    }
+
+    self.funcs[builder.decl.0].1 = Some(value);
   }
 
   pub fn get_type(
@@ -256,17 +282,28 @@ impl<'ctx> Mir<'ctx> {
 
 impl<'ctx> Mir<'ctx> {
   pub fn print(&self) {
+    fn binding_name(binding: &Option<String>) -> &str {
+      binding.as_ref().map(|s| &**s).unwrap_or("")
+    }
+
     for (name, ty) in &*self.types.hashmap() {
       print!("type {} :: ", name);
       match *unsafe { &**ty } {
         TypeVariant::Builtin(_) => {
           println!("<builtin>;");
         }
+        TypeVariant::__LifetimeHolder(_) => {
+          unreachable!()
+        }
       }
     }
-    for (name, value) in &*self.funcs.hashmap() {
+    for &(ref name, ref value) in &self.funcs {
+      let (name, value) =
+        (
+          name.as_ref().expect("286 name"),
+          value.as_ref().expect("286 val"),
+        );
       print!("{} :: ", name);
-      let value = unsafe { &**value };
       println!("() -> {} {{", value.ret_ty.0);
 
       println!("  locals: {{");
@@ -279,8 +316,7 @@ impl<'ctx> Mir<'ctx> {
       for (i, binding) in value.bindings.iter().enumerate() {
         println!(
           "    {}_{}: {},",
-          // fun hax
-          binding.0.as_ref().map(|s| &**s).unwrap_or(""),
+          binding_name(&binding.0),
           i,
           (binding.1).0,
         );
@@ -295,16 +331,31 @@ impl<'ctx> Mir<'ctx> {
             print!("    <return> = ");
           } else {
             print!("    ");
-            let opt_name = &value.bindings[lhs.0 as usize].0;
-            if let Some(ref name) = *opt_name {
-              print!("{}_{} = ", name, lhs.0 as usize);
-            } else {
-              print!("_{} = ", lhs.0 as usize);
-            }
+            let name = binding_name(
+              &value.bindings[lhs.0 as usize].0,
+            );
+            print!("{}_{} = ", name, lhs.0);
           }
           match *rhs {
             Value::Literal(n) => {
               println!("literal {};", n);
+            }
+            Value::Reference(r) => {
+              let name = binding_name(
+                &value.bindings[r.0 as usize].0,
+              );
+              println!("{}_{};", name, r.0);
+            }
+            Value::Call { callee } => {
+              let name = match self.funcs[callee.0].0 {
+                Some(ref name) => {
+                  &**name
+                }
+                None => {
+                  "<anonymous>"
+                }
+              };
+              println!("{}();", name);
             }
           }
         }
