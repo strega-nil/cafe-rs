@@ -1,9 +1,9 @@
 main :: () -> s32 {
-  add_two_to_two()
+  fib_start()
 }
 
-add_two_to_two :: () -> s32 {
-  2 + 2
+fib_start :: () -> s32 {
+  1 + 1 + 2 + 3 + 5
 }
 
 /*

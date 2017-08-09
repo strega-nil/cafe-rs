@@ -253,6 +253,17 @@ impl<'src> Parser<'src> {
     }
   }
 
+  fn binop(s: &Token) -> Option<BinOp> {
+    match **s {
+      TokenVariant::Plus => {
+        Some(BinOp::Plus)
+      }
+      _ => {
+        None
+      }
+    }
+  }
+
   fn parse_single_expr(&mut self) -> ParserResult<Expression> {
     if let Some(tok) = Self::end_of_expr(self.peek_token()?) {
       return
@@ -311,23 +322,37 @@ impl<'src> Parser<'src> {
   fn parse_binop(
     &mut self,
     lhs: Expression,
-    op: BinOp,
+    left_op: BinOp,
   ) -> ParserResult<Expression> {
-    let rhs = self.parse_single_expr()?;
-    if Self::end_of_expr(self.peek_token()?).is_some() {
+    fn op(
+      op: BinOp,
+      lhs: Expression,
+      rhs: Expression,
+    ) -> Expression {
       let start = lhs.start;
       let end = rhs.end;
-      return Ok(Spanned::new(
-        ExpressionVariant::BinOp {
-          lhs: Box::new(lhs),
-          rhs: Box::new(rhs),
-          op,
-        },
-        start,
-        end,
-      ));
+      let expr = ExpressionVariant::BinOp {
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+        op,
+      };
+      Spanned::new(expr, start, end)
     }
-    unimplemented!()
+
+    let rhs = self.parse_single_expr()?;
+
+    if let Some(right_op) = Self::binop(self.peek_token()?) {
+      self.get_token()?;
+      if left_op.precedence() >= right_op.precedence() {
+        let new_lhs = op(left_op, lhs, rhs);
+        return self.parse_binop(new_lhs, right_op);
+      } else {
+        let new_rhs = self.parse_binop(rhs, right_op)?;
+        return Ok(op(left_op, lhs, new_rhs));
+      }
+    } else {
+      Ok(op(left_op, lhs, rhs))
+    }
   }
 
   fn parse_expr(&mut self) -> ParserResult<Expression> {

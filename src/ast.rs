@@ -29,6 +29,19 @@ pub enum BinOp {
   Plus,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum BinOpPrecedence {
+  Addition
+}
+
+impl BinOp {
+  pub fn precedence(self) -> BinOpPrecedence {
+    match self {
+      BinOp::Plus => BinOpPrecedence::Addition,
+    }
+  }
+}
+
 #[derive(Debug)]
 pub enum ExpressionVariant {
   Nullary,
@@ -72,7 +85,11 @@ impl ExpressionVariant {
       }
       ExpressionVariant::Variable(ref name) => {
         // will panic for now - should be caught in typeck
-        mir::Value::Reference(locals[name])
+        if let Some(&loc) = locals.get(name) {
+          mir::Value::Reference(loc)
+        } else {
+          panic!("no `{}` name found");
+        }
       }
       ExpressionVariant::BinOp {
         ref lhs,
@@ -80,13 +97,12 @@ impl ExpressionVariant {
         ref op,
       } => {
         let lhs = {
-          let tmp = builder.add_anonymous_local(s32);
           let val = lhs.to_mir(mir, builder, block, funcs, locals);
+          let tmp = builder.add_anonymous_local(s32);
           builder.add_stmt(block, tmp, val);
           tmp
         };
         let rhs = {
-          let tmp = builder.add_anonymous_local(s32);
           let val = rhs.to_mir(
             mir,
             builder,
@@ -94,14 +110,18 @@ impl ExpressionVariant {
             funcs,
             locals,
           );
+          let tmp = builder.add_anonymous_local(s32);
           builder.add_stmt(block, tmp, val);
           tmp
         };
         Self::mir_binop(*op, lhs, rhs)
       }
       ExpressionVariant::Call { ref callee } => {
-        let callee = funcs[callee];
-        mir::Value::Call { callee }
+        if let Some(&callee) = funcs.get(callee) {
+          mir::Value::Call { callee }
+        } else {
+          panic!("function `{}` doesn't exist", callee);
+        }
       }
       ExpressionVariant::Nullary => {
         panic!("non-s32 types not yet supported")
@@ -218,6 +238,7 @@ impl From<ParserError> for AstError {
   }
 }
 
+#[derive(Debug)]
 pub struct Ast {
   funcs: HashMap<String, Function>,
 }
@@ -332,7 +353,7 @@ impl Display for ExpressionVariant {
         write!(f, "{}", s)
       }
       ExpressionVariant::BinOp { ref lhs, ref rhs, ref op } => {
-        write!(f, "{} {} {}", lhs.thing, rhs.thing, op)
+        write!(f, "{} {} {}", lhs.thing, op, rhs.thing)
       }
       ExpressionVariant::Call { ref callee } => {
         write!(f, "{}()", callee)
