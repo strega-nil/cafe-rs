@@ -2,7 +2,7 @@ pub mod lexer;
 
 use self::lexer::{Lexer, LexerError, LexerErrorVariant, Token,
                   TokenVariant};
-use ast::{Block, Block_, Expression, ExpressionVariant,
+use ast::{BinOp, Block, Block_, Expression, ExpressionVariant,
           FunctionValue, Statement, StatementVariant,
           StringlyType};
 
@@ -77,10 +77,10 @@ pub type Item = Spanned<ItemVariant>;
 
 #[derive(Clone, Debug)]
 pub enum ExpectedToken {
-  Ident,
   Item,
   Type,
   ExprEnd,
+  Expr,
   SpecificToken(TokenVariant),
 }
 
@@ -204,6 +204,7 @@ impl<'src> Parser<'src> {
     }
   }
 
+  /*
   // TODO(ubsan):
   // should maybe return a ParserResult<Spanned<String>>?
   fn parse_ident(&mut self) -> ParserResult<String> {
@@ -213,6 +214,7 @@ impl<'src> Parser<'src> {
       tok => unexpected_token!(tok, Ident, start, end),
     }
   }
+  */
 
   fn parse_type(&mut self) -> ParserResult<StringlyType> {
     let Spanned { thing, start, end } = self.get_token()?;
@@ -223,36 +225,39 @@ impl<'src> Parser<'src> {
       //TokenVariant::And => unimplemented!(),
       //TokenVariant::Star => unimplemented!(),
       TokenVariant::OpenParen => unimplemented!(),
-      tok => Err(Spanned {
-        thing: ParserErrorVariant::UnexpectedToken {
-          found: tok,
-          expected: ExpectedToken::Type,
-        },
-        start,
-        end,
-      }),
+      tok => {
+        unexpected_token!(tok, Type, start, end)
+      },
     }
   }
 
-  fn parse_expr(&mut self) -> ParserResult<Expression> {
-    fn end_of_expr(s: &Token) -> (bool, Location) {
-      match **s {
-        TokenVariant::Semicolon | TokenVariant::CloseBrace => {
-          (true, s.start)
-        }
-        _ => {
-          (false, s.start)
-        }
+  fn end_of_expr(s: &Token) -> Option<Token> {
+    match **s {
+      TokenVariant::Semicolon => {
+        Some(Spanned::new(
+          TokenVariant::Semicolon,
+          s.start,
+          s.end,
+        ))
+      }
+      TokenVariant::CloseBrace => {
+        Some(Spanned::new(
+          TokenVariant::CloseBrace,
+          s.start,
+          s.end,
+        ))
+      }
+      _ => {
+        None
       }
     }
-    if let (true, start) = end_of_expr(self.peek_token()?) {
-      return Ok(Spanned::new(
-        ExpressionVariant::Nullary,
-        start,
-        Some(start),
-      ));
-    }
+  }
 
+  fn parse_single_expr(&mut self) -> ParserResult<Expression> {
+    if let Some(tok) = Self::end_of_expr(self.peek_token()?) {
+      return
+        unexpected_token!(tok.thing, Expr, tok.start, tok.end);
+    }
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
       TokenVariant::Integer(u) => {
@@ -263,44 +268,11 @@ impl<'src> Parser<'src> {
         ))
       }
       TokenVariant::Ident(s) => {
-        // hoo boy I need NLLs
-        let (is_end, is_call) = {
-          let next = self.peek_token()?;
-          let conds = (
-            **next == TokenVariant::Colon || end_of_expr(next).0,
-            **next == TokenVariant::OpenParen,
-          );
-          if !conds.0 && !conds.1 {
-            panic!("unimplemented ident follow: {:?}", next)
-          }
-          conds
-        };
-        if is_end {
-          Ok(Spanned::new(
-            ExpressionVariant::Variable(s),
-            start,
-            end,
-          ))
-        } else if is_call {
-          self.get_token()?;
-          // parse arguments
-          let Spanned { end, .. } = eat_token!(self, CloseParen);
-          let next = self.peek_token()?;
-          if end_of_expr(next).0 {
-            Ok(Spanned::new(
-              ExpressionVariant::Call {
-                callee: s,
-                // args: ...,
-              },
-              start,
-              end,
-            ))
-          } else {
-            panic!("unimplemented call follow: {:?}", next)
-          }
-        } else {
-          unreachable!()
-        }
+        Ok(Spanned::new(
+          ExpressionVariant::Variable(s),
+          start,
+          end,
+        ))
       }
       tok => {
         panic!(
@@ -308,6 +280,83 @@ impl<'src> Parser<'src> {
           Spanned { thing: tok, start, end },
         )
       }
+    }
+  }
+
+  // NOTE(ubsan): there's probably a better way to do this
+  fn parse_single_expr_or_null(
+    &mut self,
+  ) -> ParserResult<Expression> {
+    let ret = self.parse_single_expr();
+    if let Err(ref e) = ret {
+      if let ParserErrorVariant::UnexpectedToken {
+        ref found,
+        expected: ExpectedToken::Expr,
+      } = e.thing {
+        if (
+          *found == TokenVariant::Semicolon
+          || *found == TokenVariant::CloseBrace
+        ) {
+          return Ok(Spanned::new(
+            ExpressionVariant::Nullary,
+            e.start,
+            e.end,
+          ));
+        }
+      }
+    }
+    ret
+  }
+
+  fn parse_binop(
+    &mut self,
+    lhs: Expression,
+    op: BinOp,
+  ) -> ParserResult<Expression> {
+    let rhs = self.parse_single_expr()?;
+    if Self::end_of_expr(self.peek_token()?).is_some() {
+      let start = lhs.start;
+      let end = rhs.end;
+      return Ok(Spanned::new(
+        ExpressionVariant::BinOp {
+          lhs: Box::new(lhs),
+          rhs: Box::new(rhs),
+          op,
+        },
+        start,
+        end,
+      ));
+    }
+    unimplemented!()
+  }
+
+  fn parse_expr(&mut self) -> ParserResult<Expression> {
+    let lhs = self.parse_single_expr_or_null()?;
+    if Self::end_of_expr(self.peek_token()?).is_some() {
+      return Ok(lhs);
+    }
+
+    let Token { thing, .. } = self.get_token()?;
+    match thing {
+      TokenVariant::OpenParen => { // function call
+        let Token { end, .. } = eat_token!(self, CloseParen);
+        if let ExpressionVariant::Variable(callee) = lhs.thing {
+          Ok(Spanned::new(
+            ExpressionVariant::Call {
+              callee
+            },
+            lhs.start,
+            end,
+          ))
+        } else {
+          unimplemented!()
+        }
+      }
+      // NOTE(ubsan): should probably be a "is_binop" call
+      TokenVariant::Plus => {
+        self.parse_binop(lhs, BinOp::Plus)
+      }
+      _ => unimplemented!()
     }
   }
 

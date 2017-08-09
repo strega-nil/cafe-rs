@@ -7,12 +7,7 @@ file :=
   item-definition*
 
 item-definition :=
-  | # type-definition
   | value-definition
-  | # using-declaration
-
-type-definition :=
-  `type` identifier `::` type-definition-kind
 
 value-definition :=
   identifier `::` value-definition-kind
@@ -20,7 +15,7 @@ value-definition :=
 value-definition-kind :=
   fn-definition
 
-fn-definition := `fn` `(` `)` opt-return-type block
+fn-definition := `(` `)` opt-return-type block
 
 opt-return-type :=
   | empty
@@ -41,4 +36,5 @@ statement :=
 
 expression :=
   | number-literal
+  | expression binop expression
   | empty

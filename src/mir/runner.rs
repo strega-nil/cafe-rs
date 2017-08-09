@@ -41,6 +41,11 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
           mir::Value::Reference(ref_) => {
             stack[(ref_.0 - 1) as usize].unwrap()
           }
+          mir::Value::Add(lhs, rhs) => {
+            let lhs = stack[(lhs.0 - 1) as usize].unwrap();
+            let rhs = stack[(rhs.0 - 1) as usize].unwrap();
+            lhs + rhs
+          }
           mir::Value::Call { callee } => {
             self.call(callee)
           }

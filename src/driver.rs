@@ -1,3 +1,5 @@
+#![allow(unused_parens)] // this lint is stupid
+
 extern crate clap;
 
 #[macro_use]

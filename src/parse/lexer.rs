@@ -20,9 +20,6 @@ pub type LexerError = Spanned<LexerErrorVariant>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenVariant {
-  // Item
-  KeywordFn,
-
   // Categories
   //KeywordRaw,
   //KeywordMut,
@@ -42,7 +39,8 @@ pub enum TokenVariant {
   Ident(String),
   Integer(u64),
 
-  //Plus,
+  // TODO(ubsan): should be in its own, out-of-line enum
+  Plus,
   //Minus,
   //Star,
   //And,
@@ -241,11 +239,9 @@ impl<'src> Lexer<'src> {
             loc,
             end_loc,
           )),
-          _ => Err(span!(
-            LexerErrorVariant::ReservedToken("+"),
-            loc,
-            loc,
-          )),
+          _ => {
+            Ok(span!(TokenVariant::Plus, loc, loc))
+          }
         }
       }
       '-' => match self.peekc() {
@@ -340,12 +336,12 @@ impl<'src> Lexer<'src> {
           ))
         };
         // keyword
-        let tok = if ident == "fn" {
-          TokenVariant::KeywordFn
+        let tok = if ident == "type" {
+          return err("type");
+        } else if ident == "data" {
+          return err("data");
         } else if ident == "let" {
           return err("let");
-        } else if ident == "type" {
-          return err("type");
         } else if ident == "if" {
           return err("if");
         } else if ident == "else" {

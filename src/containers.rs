@@ -71,6 +71,7 @@ impl<T: Hash + Eq, U> ArenaMap<T, U> {
     self.map.read().unwrap().get(key).map(|&r| unsafe { &*r })
   }
 
+  /*
   pub fn contains<B>(&self, key: &B) -> bool
   where
     T: Borrow<B>,
@@ -78,6 +79,7 @@ impl<T: Hash + Eq, U> ArenaMap<T, U> {
   {
     self.map.read().unwrap().contains_key(key)
   }
+  */
 
   pub fn hashmap(
     &self,

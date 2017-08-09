@@ -76,6 +76,7 @@ impl Reference {
 pub enum Value {
   Literal(i32),
   Reference(Reference),
+  Add(Reference, Reference),
   Call {
     callee: FunctionDecl,
   }
@@ -285,6 +286,13 @@ impl<'ctx> Mir<'ctx> {
     fn binding_name(binding: &Option<String>) -> &str {
       binding.as_ref().map(|s| &**s).unwrap_or("")
     }
+    fn print_binding(
+      bindings: &[(Option<String>, Type)],
+      r: Reference,
+    ) {
+      let name = binding_name(&bindings[r.0 as usize].0);
+      print!("{}_{}", name, r.0);
+    }
 
     for (name, ty) in &*self.types.hashmap() {
       print!("type {} :: ", name);
@@ -314,12 +322,16 @@ impl<'ctx> Mir<'ctx> {
 
       println!("  bindings: {{");
       for (i, binding) in value.bindings.iter().enumerate() {
-        println!(
-          "    {}_{}: {},",
-          binding_name(&binding.0),
-          i,
-          (binding.1).0,
-        );
+        if i == 0 {
+          println!("    <return>: {}", (binding.1).0);
+        } else {
+          println!(
+            "    {}_{}: {},",
+            binding_name(&binding.0),
+            i,
+            (binding.1).0,
+          );
+        }
       }
       println!("  }}");
 
@@ -341,10 +353,14 @@ impl<'ctx> Mir<'ctx> {
               println!("literal {};", n);
             }
             Value::Reference(r) => {
-              let name = binding_name(
-                &value.bindings[r.0 as usize].0,
-              );
-              println!("{}_{};", name, r.0);
+              print_binding(&value.bindings, r);
+              println!(";");
+            }
+            Value::Add(lhs, rhs) => {
+              print_binding(&value.bindings, lhs);
+              print!(" + ");
+              print_binding(&value.bindings, rhs);
+              println!(";");
             }
             Value::Call { callee } => {
               let name = match self.funcs[callee.0].0 {

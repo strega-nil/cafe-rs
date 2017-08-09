@@ -4,8 +4,6 @@ use std::fmt::{self, Display};
 use mir::{self, Mir};
 use parse::{ItemVariant, Parser, ParserError,
             ParserErrorVariant, Spanned};
-use std::collections::HashSet;
-
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub enum Category {
@@ -26,22 +24,48 @@ pub enum StringlyType {
   Unit,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum BinOp {
+  Plus,
+}
+
 #[derive(Debug)]
 pub enum ExpressionVariant {
   Nullary,
   IntLiteral(u64),
   Variable(String),
+  BinOp {
+    lhs: Box<Expression>,
+    rhs: Box<Expression>,
+    op: BinOp,
+  },
   Call {
     callee: String,
     //args: ...,
-  }
+  },
 }
 impl ExpressionVariant {
-  fn to_mir(
+  fn mir_binop(
+    op: BinOp,
+    lhs: mir::Reference,
+    rhs: mir::Reference,
+  ) -> mir::Value {
+    match op {
+      BinOp::Plus => mir::Value::Add(lhs, rhs),
+    }
+  }
+  fn to_mir<'ctx>(
     &self,
+    // TODO(ubsan): this state should probably all be in a struct
+    mir: &mut Mir<'ctx>,
+    builder: &mut mir::FunctionBuilder<'ctx>,
+    block: mir::Block,
     funcs: &HashMap<String, mir::FunctionDecl>,
     locals: &HashMap<String, mir::Reference>,
   ) -> mir::Value {
+    let s32 = mir.get_type(&StringlyType::UserDefinedType(
+      "s32".to_owned(),
+    )).unwrap();
     match *self {
       ExpressionVariant::IntLiteral(i) => {
         mir::Value::Literal(i as i32)
@@ -49,6 +73,31 @@ impl ExpressionVariant {
       ExpressionVariant::Variable(ref name) => {
         // will panic for now - should be caught in typeck
         mir::Value::Reference(locals[name])
+      }
+      ExpressionVariant::BinOp {
+        ref lhs,
+        ref rhs,
+        ref op,
+      } => {
+        let lhs = {
+          let tmp = builder.add_anonymous_local(s32);
+          let val = lhs.to_mir(mir, builder, block, funcs, locals);
+          builder.add_stmt(block, tmp, val);
+          tmp
+        };
+        let rhs = {
+          let tmp = builder.add_anonymous_local(s32);
+          let val = rhs.to_mir(
+            mir,
+            builder,
+            block,
+            funcs,
+            locals,
+          );
+          builder.add_stmt(block, tmp, val);
+          tmp
+        };
+        Self::mir_binop(*op, lhs, rhs)
       }
       ExpressionVariant::Call { ref callee } => {
         let callee = funcs[callee];
@@ -102,13 +151,19 @@ impl Function {
     let mut builder =
       mir.get_function_builder(decl, s32);
 
-    let enter_block = builder.entrance();
+    let block = builder.entrance();
     for stmt in &self.blk.statements {
       match **stmt {
         StatementVariant::Expr(ref e) => {
           let tmp = builder.add_anonymous_local(s32);
-          let mir_val = e.to_mir(funcs, &locals);
-          builder.add_stmt(enter_block, tmp, mir_val);
+          let mir_val = e.to_mir(
+            mir,
+            &mut builder,
+            block,
+            funcs,
+            &locals,
+          );
+          builder.add_stmt(block, tmp, mir_val);
         },
         StatementVariant::Local {
           ref name,
@@ -117,18 +172,27 @@ impl Function {
         } => {
           let ty = mir.get_type(ty).unwrap();
           let ref_ = builder.add_local(name.clone(), ty);
-          builder.add_stmt(
-            enter_block,
-            ref_,
-            initializer.to_mir(funcs, &locals)
+          let init = initializer.to_mir(
+            mir,
+            &mut builder,
+            block,
+            funcs,
+            &locals,
           );
+          builder.add_stmt(block, ref_, init);
           locals.insert(name.clone(), ref_);
         }
       };
     }
-    let mir_val = self.blk.expr.to_mir(funcs, &locals);
+    let mir_val = self.blk.expr.to_mir(
+      mir,
+      &mut builder,
+      block,
+      funcs,
+      &locals,
+    );
     let ret = mir::Reference::ret();
-    builder.add_stmt(enter_block, ret, mir_val);
+    builder.add_stmt(block, ret, mir_val);
     mir.add_function_definition(builder)
   }
 }
@@ -248,15 +312,34 @@ impl Display for StatementVariant {
   }
 }
 
+impl Display for BinOp {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    match *self {
+      BinOp::Plus => {
+        write!(f, "+")
+      }
+    }
+  }
+}
+
 impl Display for ExpressionVariant {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match *self {
-      ExpressionVariant::IntLiteral(ref i) => write!(f, "{}", i),
-      ExpressionVariant::Variable(ref s) => write!(f, "{}", s),
+      ExpressionVariant::IntLiteral(ref i) => {
+        write!(f, "{}", i)
+      }
+      ExpressionVariant::Variable(ref s) => {
+        write!(f, "{}", s)
+      }
+      ExpressionVariant::BinOp { ref lhs, ref rhs, ref op } => {
+        write!(f, "{} {} {}", lhs.thing, rhs.thing, op)
+      }
       ExpressionVariant::Call { ref callee } => {
         write!(f, "{}()", callee)
       }
-      ExpressionVariant::Nullary => write!(f, "()"),
+      ExpressionVariant::Nullary => {
+        write!(f, "()")
+      }
     }
   }
 }
