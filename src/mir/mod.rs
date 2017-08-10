@@ -272,7 +272,7 @@ impl<'ctx> Mir<'ctx> {
   pub fn run(&self) -> i32 {
     for (i, &(ref name, _)) in self.funcs.iter().enumerate() {
       if let Some("main") = name.as_ref().map(|s| &**s) {
-        return Runner::new(self).call(FunctionDecl(i), &vec![]);
+        return Runner::new(self).run(FunctionDecl(i));
       }
     }
     panic!("no main function found")

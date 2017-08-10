@@ -1,5 +1,8 @@
 - non-s32 types
-  - `<=`
+  - ()
+  - bool
+- typechecking!
+- `<=`
 - if-else
 - reference functions parameters
 - non-addition operators
