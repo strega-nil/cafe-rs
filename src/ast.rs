@@ -97,7 +97,9 @@ impl ExpressionVariant {
         ref op,
       } => {
         let lhs = {
-          let val = lhs.to_mir(mir, builder, block, funcs, locals);
+          let val = lhs.to_mir(
+            mir, builder, block, funcs, locals,
+          );
           let tmp = builder.add_anonymous_local(s32);
           builder.add_stmt(block, tmp, val);
           tmp
@@ -123,7 +125,14 @@ impl ExpressionVariant {
         let args: Vec<_> =
           args
             .iter()
-            .map(|v| v.to_mir())
+            .map(|v| {
+              let val = v.to_mir(
+                mir, builder, block, funcs, locals,
+              );
+              let tmp = builder.add_anonymous_local(s32);
+              builder.add_stmt(block, tmp, val);
+              tmp
+            })
             .collect();
         if let Some(&callee) = funcs.get(callee) {
           mir::Value::Call { callee, args }

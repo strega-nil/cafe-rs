@@ -79,7 +79,7 @@ pub enum Value {
   Add(Reference, Reference),
   Call {
     callee: FunctionDecl,
-    args: Vec<Value>,
+    args: Vec<Reference>,
   }
 }
 
@@ -364,11 +364,17 @@ impl<'ctx> Mir<'ctx> {
     for &(ref name, ref value) in &self.funcs {
       let (name, value) =
         (
-          name.as_ref().expect("286 name"),
-          value.as_ref().expect("286 val"),
+          name.as_ref().unwrap(),
+          value.as_ref().unwrap(),
         );
-      print!("{} :: ", name);
-      println!("() -> {} {{", value.ret_ty.0);
+      print!("{} :: (", name);
+      if !value.params.is_empty() {
+        for par in &value.params[..value.params.len() - 1] {
+          print!("{}, ", par.0);
+        }
+        print!("{}", value.params[value.params.len() - 1].0);
+      }
+      println!(") -> {} {{", value.ret_ty.0);
 
       println!("  locals: {{");
       for loc_ty in &value.locals {
@@ -404,6 +410,46 @@ impl<'ctx> Mir<'ctx> {
       }
       println!("  }}");
 
+      let print_value = |val: &Value| {
+        match *val {
+          Value::Literal(n) => {
+            println!("literal {};", n);
+          }
+          Value::Reference(r) => {
+            print_binding(&value.bindings, r);
+            println!(";");
+          }
+          Value::Add(lhs, rhs) => {
+            print_binding(&value.bindings, lhs);
+            print!(" + ");
+            print_binding(&value.bindings, rhs);
+            println!(";");
+          }
+          Value::Call { ref callee, ref args } => {
+            let name = match self.funcs[callee.0].0 {
+              Some(ref name) => {
+                &**name
+              }
+              None => {
+                "<anonymous>"
+              }
+            };
+            print!("{}(", name);
+            if !args.is_empty() {
+              for arg in &args[..args.len() - 1] {
+                print_binding(&value.bindings, *arg);
+                print!(", ");
+              }
+              print_binding(
+                &value.bindings,
+                args[args.len() - 1],
+              );
+            }
+            println!(");");
+          }
+        }
+      };
+
       for bb in &value.blks {
         println!("  bb{}: {{", bb.num.0);
         for stmt in &bb.stmts {
@@ -415,42 +461,7 @@ impl<'ctx> Mir<'ctx> {
             print_binding(&value.bindings, *lhs);
             print!(" = ");
           }
-          match *rhs {
-            Value::Literal(n) => {
-              println!("literal {};", n);
-            }
-            Value::Reference(r) => {
-              print_binding(&value.bindings, r);
-              println!(";");
-            }
-            Value::Add(lhs, rhs) => {
-              print_binding(&value.bindings, lhs);
-              print!(" + ");
-              print_binding(&value.bindings, rhs);
-              println!(";");
-            }
-            Value::Call { ref callee, ref args } => {
-              let name = match self.funcs[callee.0].0 {
-                Some(ref name) => {
-                  &**name
-                }
-                None => {
-                  "<anonymous>"
-                }
-              };
-              print!("{}(", name);
-              if !args.is_empty() {
-                for arg in &args[..args.len() - 1] {
-                  print_binding(&value.bindings, *arg);
-                }
-                print_binding(
-                  &value.bindings,
-                  args[args.len() - 1],
-                );
-              }
-              println!(");");
-            }
-          }
+          print_value(rhs);
         }
         match bb.term {
           Terminator::Goto(blk) => {

@@ -1,6 +1,6 @@
-- function parameters
+- non-s32 types
+  - `<=`
 - if-else
 - reference functions parameters
 - non-addition operators
 - unary operators (-, +)
-- non-s32 types
