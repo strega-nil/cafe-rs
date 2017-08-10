@@ -55,6 +55,7 @@ pub enum TokenVariant {
 
   // Separators
   Semicolon,
+  Comma,
   //Comma,
   Eof,
 }
@@ -208,9 +209,9 @@ impl<'src> Lexer<'src> {
           Ok(span!(TokenVariant::Colon, loc, loc))
         }
       },
-      ',' => Err(
-        span!(LexerErrorVariant::ReservedToken(","), loc, loc),
-      ),
+      ',' => {
+        Ok(span!(TokenVariant::Comma, loc, loc))
+      }
       '&' => match self.peekc() {
         Some(('&', end_loc)) => Err(span!(
           LexerErrorVariant::ReservedToken("&&"),

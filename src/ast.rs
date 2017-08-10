@@ -54,7 +54,7 @@ pub enum ExpressionVariant {
   },
   Call {
     callee: String,
-    //args: ...,
+    args: Vec<Expression>,
   },
 }
 impl ExpressionVariant {
@@ -88,7 +88,7 @@ impl ExpressionVariant {
         if let Some(&loc) = locals.get(name) {
           mir::Value::Reference(loc)
         } else {
-          panic!("no `{}` name found");
+          panic!("no `{}` name found", name);
         }
       }
       ExpressionVariant::BinOp {
@@ -116,9 +116,17 @@ impl ExpressionVariant {
         };
         Self::mir_binop(*op, lhs, rhs)
       }
-      ExpressionVariant::Call { ref callee } => {
+      ExpressionVariant::Call {
+        ref callee,
+        ref args,
+      } => {
+        let args: Vec<_> =
+          args
+            .iter()
+            .map(|v| v.to_mir())
+            .collect();
         if let Some(&callee) = funcs.get(callee) {
-          mir::Value::Call { callee }
+          mir::Value::Call { callee, args }
         } else {
           panic!("function `{}` doesn't exist", callee);
         }
@@ -151,7 +159,7 @@ pub type Block = Spanned<Block_>;
 
 #[derive(Debug)]
 pub struct FunctionValue {
-  //params: Vec<(String, StringlyType)>,
+  pub params: Vec<(String, StringlyType)>,
   pub ret_ty: StringlyType,
   pub blk: Block_,
 }
@@ -166,10 +174,22 @@ impl Function {
   ) {
     let s32 = mir.get_type(&self.thing.ret_ty).unwrap();
 
-    let mut locals: HashMap<String, mir::Reference> =
-      HashMap::new();
+    let mir_params =
+      self
+        .params
+        .iter()
+        .map(|&(_, ref ty)| {
+          mir.get_type(ty).unwrap()
+        })
+        .collect();
+
     let mut builder =
-      mir.get_function_builder(decl, s32);
+      mir.get_function_builder(decl, mir_params, s32);
+
+    let mut locals = HashMap::new();
+    for (i, param) in self.params.iter().enumerate() {
+      locals.insert(param.0.clone(), builder.get_param(i as u32));
+    }
 
     let block = builder.entrance();
     for stmt in &self.blk.statements {
@@ -355,8 +375,19 @@ impl Display for ExpressionVariant {
       ExpressionVariant::BinOp { ref lhs, ref rhs, ref op } => {
         write!(f, "{} {} {}", lhs.thing, op, rhs.thing)
       }
-      ExpressionVariant::Call { ref callee } => {
-        write!(f, "{}()", callee)
+      ExpressionVariant::Call {
+        ref callee,
+        ref args,
+      } => {
+        write!(f, "{}(", callee)?;
+        if !args.is_empty() {
+          for arg in &args[..args.len() - 1] {
+            write!(f, "{}, ", **arg)?;
+          }
+          write!(f, "{})", *args[args.len() - 1])
+        } else {
+          write!(f, ")")
+        }
       }
       ExpressionVariant::Nullary => {
         write!(f, "()")
@@ -369,7 +400,17 @@ impl Display for Ast {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     for (name, func) in &self.funcs {
       let ref func = func.thing;
-      writeln!(f, "{} :: () -> {} {{", name, func.ret_ty)?;
+      write!(f, "{} :: (", name)?;
+      if !func.params.is_empty() {
+        for p in &func.params[..func.params.len() - 1] {
+          let (ref name, ref ty) = *p;
+          write!(f, "{}: {}, ", name, ty)?;
+        }
+        let (ref name, ref ty) =
+          func.params[func.params.len() - 1];
+        write!(f, "{}: {}", name, ty)?;
+      }
+      writeln!(f, ") -> {} {{", func.ret_ty)?;
       for stmt in &func.blk.statements {
         writeln!(f, "  {};", stmt.thing)?;
       }

@@ -71,7 +71,7 @@ binop :=
   # | `&&` | `||`
 
 operator :=
-  | `->` | `::` | `:`  | binop
+  | `->` | `::` | `:`  | `,`  | binop
   # `=>`
 
 separator :=

@@ -15,7 +15,14 @@ value-definition :=
 value-definition-kind :=
   fn-definition
 
-fn-definition := `(` `)` opt-return-type block
+fn-definition := 
+  | parameter-list opt-return-type block
+parameter-list :=
+  | parameter
+  | parameter `,` parameter-list
+  | parameter-list `,`
+parameter :=
+  | ident `:` type
 
 opt-return-type :=
   | empty
@@ -23,10 +30,6 @@ opt-return-type :=
 
 type :=
   | identifier
-  | tuple
-
-tuple :=
-  | `(` `)`
 
 block :=
   `{` statement* expression `}`
@@ -37,4 +40,3 @@ statement :=
 expression :=
   | number-literal
   | expression binop expression
-  | empty

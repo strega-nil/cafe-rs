@@ -9,6 +9,14 @@ use ast::{BinOp, Block, Block_, Expression, ExpressionVariant,
 use std::ops::{Deref, DerefMut};
 use std::str;
 
+// TODO(ubsan): figure out how to better parse optional comma
+
+enum Either<T, U> {
+  Left(T),
+  Right(U),
+}
+use self::Either::{Left, Right};
+
 #[derive(Copy, Clone, Debug)]
 pub struct Location {
   pub line: u32,
@@ -64,11 +72,6 @@ impl<T> DerefMut for Spanned<T> {
   }
 }
 
-enum ExprOrStmt {
-  Expr(Expression),
-  Stmt(Statement),
-}
-
 pub enum ItemVariant {
   Function(FunctionValue),
   //Type(Type),
@@ -81,6 +84,10 @@ pub enum ExpectedToken {
   Type,
   ExprEnd,
   Expr,
+  Parameter,
+  ParameterListContinuation,
+  Argument,
+  ArgumentListContinuation,
   SpecificToken(TokenVariant),
 }
 
@@ -113,7 +120,13 @@ pub struct Parser<'src> {
 }
 
 macro_rules! unexpected_token {
-  ($tok:expr, $expected:ident, $start:expr, $end:expr) => ({
+  (
+    $tok:expr,
+    $expected:ident,
+    $start:expr,
+    $end:expr
+    $(,)*
+  ) => ({
     let thing = ParserErrorVariant::UnexpectedToken {
       found: $tok,
       expected: ExpectedToken::$expected,
@@ -149,7 +162,7 @@ macro_rules! allow_eof {
 }
 
 macro_rules! eat_token {
-  ($slf:expr, $tok:ident) => (
+  ($slf:expr, $tok:ident) => ({
     match $slf.get_token()? {
       s @ Spanned { thing: TokenVariant::$tok, .. } => s,
       Spanned { thing, start, end } => return Err(Spanned {
@@ -164,7 +177,7 @@ macro_rules! eat_token {
         end,
       }),
     }
-  );
+  });
 }
 
 macro_rules! maybe_eat_token {
@@ -204,18 +217,6 @@ impl<'src> Parser<'src> {
     }
   }
 
-  /*
-  // TODO(ubsan):
-  // should maybe return a ParserResult<Spanned<String>>?
-  fn parse_ident(&mut self) -> ParserResult<String> {
-    let Spanned { thing, start, end } = self.get_token()?;
-    match thing {
-      TokenVariant::Ident(s) => Ok(s),
-      tok => unexpected_token!(tok, Ident, start, end),
-    }
-  }
-  */
-
   fn parse_type(&mut self) -> ParserResult<StringlyType> {
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
@@ -247,6 +248,13 @@ impl<'src> Parser<'src> {
           s.end,
         ))
       }
+      TokenVariant::CloseParen => {
+        Some(Spanned::new(
+          TokenVariant::CloseParen,
+          s.start,
+          s.end,
+        ))
+      }
       _ => {
         None
       }
@@ -264,26 +272,27 @@ impl<'src> Parser<'src> {
     }
   }
 
-  fn parse_single_expr(&mut self) -> ParserResult<Expression> {
+  fn maybe_parse_single_expr(
+    &mut self,
+  ) -> ParserResult<Either<Expression, Token>> {
     if let Some(tok) = Self::end_of_expr(self.peek_token()?) {
-      return
-        unexpected_token!(tok.thing, Expr, tok.start, tok.end);
+      return Ok(Right(tok));
     }
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
       TokenVariant::Integer(u) => {
-        Ok(Spanned::new(
+        Ok(Left(Spanned::new(
           ExpressionVariant::IntLiteral(u),
           start,
           end,
-        ))
+        )))
       }
       TokenVariant::Ident(s) => {
-        Ok(Spanned::new(
+        Ok(Left(Spanned::new(
           ExpressionVariant::Variable(s),
           start,
           end,
-        ))
+        )))
       }
       tok => {
         panic!(
@@ -294,29 +303,15 @@ impl<'src> Parser<'src> {
     }
   }
 
-  // NOTE(ubsan): there's probably a better way to do this
-  fn parse_single_expr_or_null(
-    &mut self,
-  ) -> ParserResult<Expression> {
-    let ret = self.parse_single_expr();
-    if let Err(ref e) = ret {
-      if let ParserErrorVariant::UnexpectedToken {
-        ref found,
-        expected: ExpectedToken::Expr,
-      } = e.thing {
-        if (
-          *found == TokenVariant::Semicolon
-          || *found == TokenVariant::CloseBrace
-        ) {
-          return Ok(Spanned::new(
-            ExpressionVariant::Nullary,
-            e.start,
-            e.end,
-          ));
-        }
+  fn parse_single_expr(&mut self) -> ParserResult<Expression> {
+    match self.maybe_parse_single_expr()? {
+      Right(tok) => {
+        unexpected_token!(tok.thing, Expr, tok.start, tok.end)
+      }
+      Left(e) => {
+        Ok(e)
       }
     }
-    ret
   }
 
   fn parse_binop(
@@ -355,51 +350,115 @@ impl<'src> Parser<'src> {
     }
   }
 
-  fn parse_expr(&mut self) -> ParserResult<Expression> {
-    let lhs = self.parse_single_expr_or_null()?;
-    if Self::end_of_expr(self.peek_token()?).is_some() {
-      return Ok(lhs);
-    }
+  fn maybe_parse_expr(
+    &mut self,
+  ) -> ParserResult<Either<Expression, Token>> {
+    let lhs = match self.maybe_parse_single_expr()? {
+      Left(expr) => expr,
+      Right(tok) => return Ok(Right(tok)),
+    };
 
-    let Token { thing, .. } = self.get_token()?;
-    match thing {
+    match self.peek_token()?.thing {
       TokenVariant::OpenParen => { // function call
-        let Token { end, .. } = eat_token!(self, CloseParen);
+        self.get_token()?;
+
+        let mut args = vec![];
+        let end;
+        let mut expecting_arg = true;
+        loop {
+          match self.maybe_parse_expr()? {
+            Left(expr) => {
+              if !expecting_arg {
+                let _ = ExpectedToken::ArgumentListContinuation;
+                panic!("I need to figure out a good way to do this");
+              }
+              args.push(expr);
+              if let None = maybe_eat_token!(self, Comma) {
+                expecting_arg = false;
+              }
+            }
+            Right(tok) => {
+              if let TokenVariant::CloseParen = *tok {
+                self.get_token()?;
+                end = tok.end;
+                break;
+              } else {
+                return unexpected_token!(
+                  tok.thing,
+                  Argument,
+                  tok.start,
+                  tok.end,
+                );
+              }
+            }
+          }
+        }
+
         if let ExpressionVariant::Variable(callee) = lhs.thing {
-          Ok(Spanned::new(
+          Ok(Left(Spanned::new(
             ExpressionVariant::Call {
-              callee
+              callee,
+              args,
             },
             lhs.start,
             end,
-          ))
+          )))
         } else {
           unimplemented!()
         }
       }
       // NOTE(ubsan): should probably be a "is_binop" call
       TokenVariant::Plus => {
-        self.parse_binop(lhs, BinOp::Plus)
+        self.get_token()?;
+        self.parse_binop(lhs, BinOp::Plus).map(Left)
       }
-      _ => unimplemented!()
+      _ => Ok(Left(lhs)),
     }
   }
 
-  fn parse_expr_or_stmt(&mut self) -> ParserResult<ExprOrStmt> {
-    let expr = self.parse_expr()?;
-    { // NLLs pls
-      let Spanned { ref thing, .. } =
-        *self.peek_token()?;
-      if let TokenVariant::CloseBrace = *thing {
-        return Ok(ExprOrStmt::Expr(expr));
+  fn parse_expr_or_null(&mut self) -> ParserResult<Expression> {
+    match self.maybe_parse_expr()? {
+      Left(expr) => {
+        Ok(expr)
       }
+      Right(tok) => {
+        if Self::end_of_expr(&tok).is_some() {
+          Ok(Spanned::new(
+            ExpressionVariant::Nullary,
+            tok.start,
+            tok.end,
+          ))
+        } else {
+          unexpected_token!(tok.thing, Expr, tok.start, tok.end)
+        }
+      }
+    }
+  }
+
+  fn parse_expr(&mut self) -> ParserResult<Expression> {
+    match self.maybe_parse_expr()? {
+      Left(expr) => {
+        Ok(expr)
+      }
+      Right(tok) => {
+        unexpected_token!(tok.thing, Expr, tok.start, tok.end)
+      }
+    }
+  }
+
+  fn parse_expr_or_stmt(
+    &mut self,
+  ) -> ParserResult<Either<Expression, Statement>> {
+    let expr = self.parse_expr_or_null()?;
+    if let TokenVariant::CloseBrace = **self.peek_token()? {
+      return Ok(Left(expr));
     }
 
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
       TokenVariant::Semicolon => {
         let start = expr.start;
-        Ok(ExprOrStmt::Stmt(Spanned::new(
+        Ok(Right(Spanned::new(
           StatementVariant::Expr(expr),
           start,
           end,
@@ -418,7 +477,7 @@ impl<'src> Parser<'src> {
         eat_token!(self, Equals);
         let initializer = self.parse_expr()?;
         let Spanned { end, .. } = eat_token!(self, Semicolon);
-        Ok(ExprOrStmt::Stmt(Spanned::new(
+        Ok(Right(Spanned::new(
           StatementVariant::Local {
             name,
             ty,
@@ -434,6 +493,51 @@ impl<'src> Parser<'src> {
     }
   }
 
+  fn parse_param_list(
+    &mut self,
+  ) -> ParserResult<Spanned<Vec<(String, StringlyType)>>> {
+    let open = eat_token!(self, OpenParen);
+
+    let mut params = vec![];
+    let mut expecting_param = true;
+    loop {
+      let tok = self.get_token()?;
+      match tok.thing {
+        TokenVariant::Ident(name) => {
+          if !expecting_param {
+            return unexpected_token!(
+              TokenVariant::Ident(name),
+              ParameterListContinuation,
+              tok.start,
+              tok.end,
+            );
+          }
+          eat_token!(self, Colon);
+          let ty = self.parse_type()?;
+          params.push((name, ty));
+          if let None = maybe_eat_token!(self, Comma) {
+            expecting_param = false;
+          }
+        }
+        TokenVariant::CloseParen => {
+          return Ok(Spanned::new(
+            params,
+            open.start,
+            tok.end,
+          ));
+        }
+        _ => {
+          return unexpected_token!(
+            tok.thing,
+            Parameter,
+            tok.start,
+            tok.end,
+          );
+        }
+      }
+    }
+  }
+
   fn parse_block(&mut self) -> ParserResult<Block> {
     let mut statements = vec![];
     let expr;
@@ -441,11 +545,11 @@ impl<'src> Parser<'src> {
     let sp_start = eat_token!(self, OpenBrace);
     loop {
       match self.parse_expr_or_stmt()? {
-        ExprOrStmt::Expr(e) => {
+        Left(e) => {
           expr = e;
           break;
         }
-        ExprOrStmt::Stmt(s) => statements.push(s),
+        Right(s) => statements.push(s),
       }
     }
     let sp_end = eat_token!(self, CloseBrace);
@@ -460,9 +564,7 @@ impl<'src> Parser<'src> {
     match thing {
       TokenVariant::Ident(name) => {
         eat_token!(self, ColonColon);
-        eat_token!(self, OpenParen);
-        // argument list
-        eat_token!(self, CloseParen);
+        let params = self.parse_param_list()?;
         let ret_ty = {
           if let Some(_) = maybe_eat_token!(self, SkinnyArrow) {
             self.parse_type()?
@@ -472,7 +574,7 @@ impl<'src> Parser<'src> {
         };
         let blk = self.parse_block()?;
         let thing = ItemVariant::Function(FunctionValue {
-          //params: vec![],
+          params: params.thing,
           ret_ty,
           blk: blk.thing,
         });
@@ -483,9 +585,6 @@ impl<'src> Parser<'src> {
   }
 
   pub fn next_item(&mut self) -> ParserResult<(String, Item)> {
-    /*
-      parse type parameters here
-    */
     let item = allow_eof!(self.parse_item_definition())?;
     Ok(item)
   }

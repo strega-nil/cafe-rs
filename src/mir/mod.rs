@@ -72,14 +72,29 @@ impl Reference {
   }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 pub enum Value {
   Literal(i32),
   Reference(Reference),
   Add(Reference, Reference),
   Call {
     callee: FunctionDecl,
+    args: Vec<Value>,
   }
+}
+
+#[derive(Copy, Clone, Debug)]
+enum BindingKind {
+  Param(u32),
+  Local(u32),
+  Return,
+}
+
+#[derive(Debug)]
+struct Binding<'ctx> {
+  name: Option<String>,
+  ty: Type<'ctx>,
+  kind: BindingKind,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -91,7 +106,7 @@ pub enum Terminator {
   Return,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Debug)]
 struct Statement {
   lhs: Reference,
   rhs: Value,
@@ -106,23 +121,31 @@ struct BlockData {
 
 #[derive(Debug)]
 struct FunctionValue<'ctx> {
+  params: Vec<Type<'ctx>>,
   ret_ty: Type<'ctx>,
   blks: Vec<BlockData>,
   locals: Vec<Type<'ctx>>,
-  bindings: Vec<(Option<String>, Type<'ctx>)>,
+  bindings: Vec<Binding<'ctx>>,
 }
 
 #[derive(Debug)]
 pub struct FunctionBuilder<'ctx> {
   decl: FunctionDecl,
+  params: Vec<Type<'ctx>>,
   ret_ty: Type<'ctx>,
   locals: Vec<Type<'ctx>>,
-  bindings: Vec<(Option<String>, Type<'ctx>)>,
+  bindings: Vec<Binding<'ctx>>,
   blks: Vec<BlockData>,
 }
 
 impl<'ctx> FunctionBuilder<'ctx> {
-  fn new(decl: FunctionDecl, ret_ty: Type<'ctx>) -> Self {
+  fn new(
+    decl: FunctionDecl,
+    // TODO(ubsan): figure out a good way to give params names
+    // without lots of allocations
+    params: Vec<Type<'ctx>>,
+    ret_ty: Type<'ctx>,
+  ) -> Self {
     let enter_block = BlockData {
       num: Block(0),
       stmts: vec![],
@@ -133,17 +156,40 @@ impl<'ctx> FunctionBuilder<'ctx> {
       stmts: vec![],
       term: Terminator::Return,
     };
+
+    let mut bindings = Vec::with_capacity(params.len() + 1);
+    bindings.push(Binding {
+      name: Some("<return>".to_owned()),
+      ty: ret_ty,
+      kind: BindingKind::Return,
+    });
+    for (i, p) in params.iter().enumerate() {
+      bindings.push(Binding {
+        name: None,
+        ty: *p,
+        kind: BindingKind::Param(i as u32),
+      })
+    }
     FunctionBuilder {
       decl,
+      params,
       ret_ty,
       locals: vec![],
-      bindings: vec![(Some(String::from("<return>")), ret_ty)],
+      bindings,
       blks: vec![enter_block, exit_block],
     }
   }
 
   pub fn entrance(&self) -> Block {
     Block(0)
+  }
+
+  pub fn get_param(&self, n: u32) -> Reference {
+    assert!(
+      (n as usize) < self.params.len(),
+      "invalid parameter number: {}", n
+    );
+    Reference(n + 1)
   }
 }
 
@@ -163,7 +209,11 @@ impl<'ctx> FunctionBuilder<'ctx> {
     ty: Type<'ctx>,
   ) -> Reference {
     self.locals.push(ty);
-    self.bindings.push((None, ty));
+    self.bindings.push(Binding {
+      name: None,
+      ty,
+      kind: BindingKind::Local((self.locals.len() - 1) as u32),
+    });
     Reference((self.bindings.len() - 1) as u32)
   }
 
@@ -173,7 +223,11 @@ impl<'ctx> FunctionBuilder<'ctx> {
     ty: Type<'ctx>,
   ) -> Reference {
     self.locals.push(ty);
-    self.bindings.push((Some(name), ty));
+    self.bindings.push(Binding {
+      name: Some(name),
+      ty,
+      kind: BindingKind::Local((self.locals.len() - 1) as u32),
+    });
     Reference((self.bindings.len() - 1) as u32)
   }
 }
@@ -218,7 +272,7 @@ impl<'ctx> Mir<'ctx> {
   pub fn run(&self) -> i32 {
     for (i, &(ref name, _)) in self.funcs.iter().enumerate() {
       if let Some("main") = name.as_ref().map(|s| &**s) {
-        return Runner::new(self).call(FunctionDecl(i));
+        return Runner::new(self).call(FunctionDecl(i), &vec![]);
       }
     }
     panic!("no main function found")
@@ -249,9 +303,10 @@ impl<'ctx> Mir<'ctx> {
   pub fn get_function_builder(
     &self,
     decl: FunctionDecl,
+    params: Vec<Type<'ctx>>,
     ret_ty: Type<'ctx>,
   ) -> FunctionBuilder<'ctx> {
-    FunctionBuilder::new(decl, ret_ty)
+    FunctionBuilder::new(decl, params, ret_ty)
   }
 
   pub fn add_function_definition(
@@ -259,6 +314,7 @@ impl<'ctx> Mir<'ctx> {
     builder: FunctionBuilder<'ctx>,
   ) {
     let value = FunctionValue {
+      params: builder.params,
       ret_ty: builder.ret_ty,
       blks: builder.blks,
       locals: builder.locals,
@@ -287,10 +343,10 @@ impl<'ctx> Mir<'ctx> {
       binding.as_ref().map(|s| &**s).unwrap_or("")
     }
     fn print_binding(
-      bindings: &[(Option<String>, Type)],
+      bindings: &[Binding],
       r: Reference,
     ) {
-      let name = binding_name(&bindings[r.0 as usize].0);
+      let name = binding_name(&bindings[r.0 as usize].name);
       print!("{}_{}", name, r.0);
     }
 
@@ -322,15 +378,28 @@ impl<'ctx> Mir<'ctx> {
 
       println!("  bindings: {{");
       for (i, binding) in value.bindings.iter().enumerate() {
-        if i == 0 {
-          println!("    <return>: {}", (binding.1).0);
-        } else {
-          println!(
-            "    {}_{}: {},",
-            binding_name(&binding.0),
-            i,
-            (binding.1).0,
-          );
+        match binding.kind {
+          BindingKind::Return => {
+            println!("    <return>: {}", binding.ty.0)
+          }
+          BindingKind::Param(p) => {
+            println!(
+              "    {}_{}: {} = <params>[{}],",
+              binding_name(&binding.name),
+              i,
+              binding.ty.0,
+              p,
+            );
+          }
+          BindingKind::Local(loc) => {
+            println!(
+              "    {}_{}: {} = <locals>[{}],",
+              binding_name(&binding.name),
+              i,
+              binding.ty.0,
+              loc,
+            );
+          }
         }
       }
       println!("  }}");
@@ -343,10 +412,8 @@ impl<'ctx> Mir<'ctx> {
             print!("    <return> = ");
           } else {
             print!("    ");
-            let name = binding_name(
-              &value.bindings[lhs.0 as usize].0,
-            );
-            print!("{}_{} = ", name, lhs.0);
+            print_binding(&value.bindings, *lhs);
+            print!(" = ");
           }
           match *rhs {
             Value::Literal(n) => {
@@ -362,7 +429,7 @@ impl<'ctx> Mir<'ctx> {
               print_binding(&value.bindings, rhs);
               println!(";");
             }
-            Value::Call { callee } => {
+            Value::Call { ref callee, ref args } => {
               let name = match self.funcs[callee.0].0 {
                 Some(ref name) => {
                   &**name
@@ -371,7 +438,17 @@ impl<'ctx> Mir<'ctx> {
                   "<anonymous>"
                 }
               };
-              println!("{}();", name);
+              print!("{}(", name);
+              if !args.is_empty() {
+                for arg in &args[..args.len() - 1] {
+                  print_binding(&value.bindings, *arg);
+                }
+                print_binding(
+                  &value.bindings,
+                  args[args.len() - 1],
+                );
+              }
+              println!(");");
             }
           }
         }
