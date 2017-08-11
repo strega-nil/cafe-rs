@@ -80,12 +80,12 @@ impl Display for BuiltinType {
 }
 
 #[derive(Debug)]
-pub enum TypeVariant<'tcx> {
+pub enum TypeVariant<'ctx> {
   Builtin(BuiltinType),
-  __LifetimeHolder(::std::marker::PhantomData<&'tcx ()>),
+  __LifetimeHolder(::std::marker::PhantomData<&'ctx ()>),
 }
 
-impl<'tcx> TypeVariant<'tcx> {
+impl<'ctx> TypeVariant<'ctx> {
   fn size(&self) -> u32 {
     match *self {
       TypeVariant::Builtin(ref builtin) => builtin.size(),
@@ -100,12 +100,12 @@ impl<'tcx> TypeVariant<'tcx> {
   }
 }
 
-impl<'tcx> TypeVariant<'tcx> {
+impl<'ctx> TypeVariant<'ctx> {
   pub fn s32() -> Self {
     TypeVariant::Builtin(BuiltinType::SInt(IntSize::I32))
   }
 }
-impl<'tcx> Display for TypeVariant<'tcx> {
+impl<'ctx> Display for TypeVariant<'ctx> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match *self {
       TypeVariant::Builtin(ref builtin) => {
