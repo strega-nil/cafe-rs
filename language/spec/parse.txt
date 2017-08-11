@@ -4,23 +4,19 @@ NOTES:
   - the special token empty shall be the absence of a token
 
 file :=
-  item-definition*
+  | item-definition*
 
 item-definition :=
-  | value-definition
+  | func-definition
 
-value-definition :=
-  identifier `::` value-definition-kind
+func-definition := 
+  | `func` ident parameter-list opt-return-type `::` block
 
-value-definition-kind :=
-  fn-definition
-
-fn-definition := 
-  | parameter-list opt-return-type block
-parameter-list :=
-  | parameter
-  | parameter `,` parameter-list
-  | parameter-list `,`
+parameter-list := 
+  | `(` parameter-list-no-parens `)`
+parameter-list-no-parens :=
+  | parameter `,`?
+  | parameter `,` parameter-list-no-parens
 parameter :=
   | ident `:` type
 
@@ -32,7 +28,7 @@ type :=
   | identifier
 
 block :=
-  `{` statement* expression `}`
+  | `{` statement* expression `}`
 
 statement :=
   | expression `;`

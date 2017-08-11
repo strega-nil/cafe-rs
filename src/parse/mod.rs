@@ -85,9 +85,7 @@ pub enum ExpectedToken {
   ExprEnd,
   Expr,
   Parameter,
-  ParameterListContinuation,
   Argument,
-  ArgumentListContinuation,
   SpecificToken(TokenVariant),
 }
 
@@ -339,19 +337,13 @@ impl<'src> Parser<'src> {
 
         let mut args = vec![];
         let end;
-        let mut expecting_arg = true;
         loop {
           match self.maybe_parse_expr()? {
             Left(expr) => {
-              if !expecting_arg {
-                let _ = ExpectedToken::ArgumentListContinuation;
-                panic!(
-                  "I need to figure out a good way to do this"
-                );
-              }
               args.push(expr);
               if let None = maybe_eat_token!(self, Comma) {
-                expecting_arg = false;
+                end = eat_token!(self, CloseParen).end;
+                break;
               }
             }
             Right(tok) => {
@@ -463,24 +455,16 @@ impl<'src> Parser<'src> {
     let open = eat_token!(self, OpenParen);
 
     let mut params = vec![];
-    let mut expecting_param = true;
     loop {
       let tok = self.get_token()?;
       match tok.thing {
         TokenVariant::Ident(name) => {
-          if !expecting_param {
-            return unexpected_token!(
-              TokenVariant::Ident(name),
-              ParameterListContinuation,
-              tok.start,
-              tok.end,
-            );
-          }
           eat_token!(self, Colon);
           let ty = self.parse_type()?;
           params.push((name, ty));
           if let None = maybe_eat_token!(self, Comma) {
-            expecting_param = false;
+            let end = eat_token!(self, CloseParen).end;
+            return Ok(Spanned::new(params, open.start, end));
           }
         }
         TokenVariant::CloseParen => {
