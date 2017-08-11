@@ -28,6 +28,7 @@ token :=
   | operator
 
 keyword :=
+  # | `data`
   # | `type`
   # | `let`
   # | `if`

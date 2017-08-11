@@ -38,11 +38,17 @@ fn main() {
         .long("print-mir")
         .help("print the generated MIR"),
     )
+    .arg(
+      Arg::with_name("no-output")
+        .long("no-output")
+        .help("do not print the output of the run"),
+    )
     .get_matches();
 
   let name = matches.value_of("input").unwrap();
   let print_ast = matches.is_present("print-ast");
   let print_mir = matches.is_present("print-mir");
+  let print_run = !matches.is_present("no-output");
 
   let mut file = Vec::new();
   File::open(&name)
@@ -62,6 +68,10 @@ fn main() {
     println!("    ===   MIR   ===    ");
     mir.print();
   }
-  println!("    ===   RUN   ===    ");
-  println!("{:?}", mir.run());
+  if print_run {
+    println!("    ===   RUN   ===    ");
+    println!("{:?}", mir.run());
+  } else {
+    mir.run();
+  }
 }

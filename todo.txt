@@ -4,6 +4,7 @@
 - typechecking!
 - `<=`
 - if-else
+- add more tests
 - reference functions parameters
 - non-addition operators
 - unary operators (-, +)
