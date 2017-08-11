@@ -198,20 +198,14 @@ impl<'src> Lexer<'src> {
           self.getc();
           Ok(span!(TokenVariant::ColonColon, loc, end_loc))
         }
-        Some(('=', end_loc)) => {
-          Err(span!(
-            LexerErrorVariant::ReservedToken(":="),
-            loc,
-            end_loc,
-          ))
-        }
-        _ => {
-          Ok(span!(TokenVariant::Colon, loc, loc))
-        }
+        Some(('=', end_loc)) => Err(span!(
+          LexerErrorVariant::ReservedToken(":="),
+          loc,
+          end_loc,
+        )),
+        _ => Ok(span!(TokenVariant::Colon, loc, loc)),
       },
-      ',' => {
-        Ok(span!(TokenVariant::Comma, loc, loc))
-      }
+      ',' => Ok(span!(TokenVariant::Comma, loc, loc)),
       '&' => match self.peekc() {
         Some(('&', end_loc)) => Err(span!(
           LexerErrorVariant::ReservedToken("&&"),
@@ -240,9 +234,7 @@ impl<'src> Lexer<'src> {
             loc,
             end_loc,
           )),
-          _ => {
-            Ok(span!(TokenVariant::Plus, loc, loc))
-          }
+          _ => Ok(span!(TokenVariant::Plus, loc, loc)),
         }
       }
       '-' => match self.peekc() {
@@ -307,9 +299,7 @@ impl<'src> Lexer<'src> {
             end_loc,
           ))
         }
-        _ => {
-          Ok(span!(TokenVariant::Equals, loc, loc))
-        }
+        _ => Ok(span!(TokenVariant::Equals, loc, loc)),
       },
       c if Self::is_start_of_ident(c) => {
         // ident

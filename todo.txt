@@ -1,6 +1,7 @@
 - non-s32 types
   - ()
   - bool
+- consistency with 'tcx and 'ctx
 - typechecking!
 - `<=`
 - if-else

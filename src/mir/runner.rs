@@ -1,9 +1,9 @@
-use mir::{self, Mir};
+use mir::{self, align, Mir};
 
-const UNINITIALIZED: i32 = 0x42424242;
+const UNINITIALIZED: u8 = 0x42;
 
 // meant to be the state of a single function
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct FunctionState<'mir, 'ctx: 'mir> {
   func: &'mir mir::FunctionValue<'ctx>,
   // indices into the stack
@@ -12,13 +12,14 @@ struct FunctionState<'mir, 'ctx: 'mir> {
   // technically, we only need to keep `return_value` and can
   // calculate the rest
   return_value: usize,
+  params_start: usize,
   locals_start: usize,
 }
 
 pub struct Runner<'mir, 'ctx: 'mir> {
   mir: &'mir Mir<'ctx>,
   call_stack: Vec<FunctionState<'mir, 'ctx>>,
-  stack: Vec<i32>,
+  stack: Vec<u8>,
 }
 
 impl<'mir, 'ctx> Runner<'mir, 'ctx> {
@@ -34,50 +35,85 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     *self.call_stack.last().expect("nothing on the call stack")
   }
 
+  unsafe fn read<T: Copy>(&self, idx: usize) -> T {
+    let ptr = &self.stack[idx];
+    *(ptr as *const _ as *const T)
+  }
+
+  unsafe fn write<T: Copy>(&mut self, idx: usize, t: T) {
+    let ptr = &mut self.stack[idx];
+    *(ptr as *mut _ as *mut T) = t;
+  }
+
+  // for function calls
+  // reads from the previous stack frame
+  fn read_ref_prev(&self, ref_: mir::Reference) -> i32 {
+    let cur = self.call_stack[self.call_stack.len() - 2];
+    match cur.func.bindings[ref_.0 as usize].kind {
+      mir::BindingKind::Return => unsafe {
+        self.read::<i32>(cur.return_value)
+      },
+      mir::BindingKind::Param(i) => {
+        let offset = cur.func.params.offset_of(i) as usize;
+        unsafe { self.read::<i32>(cur.params_start + offset) }
+      }
+      mir::BindingKind::Local(i) => {
+        let offset = cur.func.locals.offset_of(i) as usize;
+        unsafe { self.read::<i32>(cur.locals_start + offset) }
+      }
+    }
+  }
+
   fn read_ref(&self, ref_: mir::Reference) -> i32 {
     let cur = self.current_state();
     match cur.func.bindings[ref_.0 as usize].kind {
-      mir::BindingKind::Return => {
-        // this is technically valid, but something I do want to
-        // catch
-        // because I think it means a bug in the compiler
-        panic!("attempted to read return binding");
-      }
+      mir::BindingKind::Return => unsafe {
+        self.read::<i32>(cur.return_value)
+      },
       mir::BindingKind::Param(i) => {
-        self.stack[cur.return_value + 1 + (i as usize)]
+        let offset = cur.func.params.offset_of(i) as usize;
+        unsafe { self.read::<i32>(cur.params_start + offset) }
       }
       mir::BindingKind::Local(i) => {
-        self.stack[cur.locals_start + (i as usize)]
+        let offset = cur.func.locals.offset_of(i) as usize;
+        unsafe { self.read::<i32>(cur.locals_start + offset) }
       }
     }
   }
 
   fn write_ref(&mut self, ref_: mir::Reference, val: i32) {
     let cur = self.current_state();
-    match cur.func.bindings[ref_.0 as usize].kind {
-      mir::BindingKind::Return => {
-        self.stack[cur.return_value] = val;
-      }
+    let binding = &cur.func.bindings[ref_.0 as usize];
+    match binding.kind {
+      mir::BindingKind::Return => unsafe {
+        self.write(cur.return_value, val);
+      },
       mir::BindingKind::Param(i) => {
-        self.stack[cur.return_value + 1 + (i as usize)] = val;
+        let offset = cur.func.params.offset_of(i) as usize;
+        unsafe {
+          self.write(cur.params_start + offset, val);
+        }
       }
       mir::BindingKind::Local(i) => {
-        self.stack[cur.locals_start + (i as usize)] = val;
+        let offset = cur.func.locals.offset_of(i) as usize;
+        unsafe {
+          self.write(cur.locals_start + offset, val);
+        }
       }
     }
   }
 
   fn pop_state(&mut self) {
+    let new_size = self.current_state().return_value;
+    self.stack.resize(new_size, UNINITIALIZED);
     self.call_stack.pop();
   }
 
-  fn push_state(
-    &mut self,
-    func: mir::FunctionDecl,
-    return_value: usize,
-  ) {
+  // after this call, the stack will be set up for the call,
+  // but without arguments
+  fn push_state(&mut self, func: mir::FunctionDecl) {
     let func = match self.mir.funcs[func.0].1 {
-      Some(ref f) => { f }
+      Some(ref f) => f,
       None => {
         panic!(
           "Function never defined: {:?} ({:?})",
@@ -86,31 +122,35 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
         );
       }
     };
-    let locals_start = return_value + 1 + func.params.len();
+    let return_value =
+      align(self.stack.len(), func.ret_ty.align() as usize);
+    let return_end = return_value + func.ret_ty.size() as usize;
+    let params_start = align(return_end, 16);
+    let locals_start =
+      params_start + func.params.size() as usize;
 
-    assert!(
-      self.stack.len() == locals_start,
-      "either too many or too few parameters on the stack"
-    );
+    self.stack.resize(locals_start, UNINITIALIZED);
 
     self.call_stack.push(FunctionState {
       func,
       return_value,
+      params_start,
       locals_start,
     });
   }
 
   pub fn run(&mut self, func: mir::FunctionDecl) -> i32 {
-    self.stack.resize(1, UNINITIALIZED);
-    self.push_state(func, 0);
+    self.push_state(func);
     self.call();
-    return self.stack[0];
+    let tmp = self.read_ref(mir::Reference::ret());
+    self.pop_state();
+    tmp
   }
 
   fn call(&mut self) {
     {
-      let loc_len = self.current_state().func.locals.len();
-      let new_size = self.stack.len() + loc_len;
+      let loc_size = self.current_state().func.locals.size();
+      let new_size = self.stack.len() + loc_size as usize;
       self.stack.resize(new_size, UNINITIALIZED);
     }
     let mut cur_blk = 0;
@@ -121,29 +161,26 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
       {
         let mir::Statement { ref lhs, ref rhs } = *stmt;
         let rhs = match *rhs {
-          mir::Value::Literal(lit) => { lit }
-          mir::Value::Reference(ref_) => {
-            self.read_ref(ref_)
-          }
+          mir::Value::Literal(lit) => lit,
+          mir::Value::Reference(ref_) => self.read_ref(ref_),
           mir::Value::Add(lhs, rhs) => {
             let lhs = self.read_ref(lhs);
             let rhs = self.read_ref(rhs);
             lhs + rhs
           }
-          mir::Value::Call { ref callee, ref args } => {
-            let return_value = self.stack.len();
-            self.stack.resize(
-              return_value + args.len() + 1,
-              UNINITIALIZED,
-            );
+          mir::Value::Call {
+            ref callee,
+            ref args,
+          } => {
+            self.push_state(*callee);
             for (i, r) in args.iter().enumerate() {
-              let tmp = self.read_ref(*r);
-              self.stack[return_value + 1 + i] = tmp;
+              let i = i as u32;
+              let tmp = self.read_ref_prev(*r);
+              self.write_ref(mir::Reference::param(i), tmp);
             }
-            self.push_state(*callee, return_value);
             self.call();
-            let tmp = self.stack[return_value];
-            self.stack.resize(return_value, UNINITIALIZED);
+            let tmp = self.read_ref(mir::Reference::ret());
+            self.pop_state();
             tmp
           }
         };
@@ -154,7 +191,6 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
           cur_blk = blk.0 as usize;
         }
         mir::Terminator::Return => {
-          self.pop_state();
           return;
         }
       }

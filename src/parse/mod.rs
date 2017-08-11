@@ -226,49 +226,29 @@ impl<'src> Parser<'src> {
       //TokenVariant::And => unimplemented!(),
       //TokenVariant::Star => unimplemented!(),
       TokenVariant::OpenParen => unimplemented!(),
-      tok => {
-        unexpected_token!(tok, Type, start, end)
-      },
+      tok => unexpected_token!(tok, Type, start, end),
     }
   }
 
   fn end_of_expr(s: &Token) -> Option<Token> {
     match **s {
-      TokenVariant::Semicolon => {
-        Some(Spanned::new(
-          TokenVariant::Semicolon,
-          s.start,
-          s.end,
-        ))
-      }
-      TokenVariant::CloseBrace => {
-        Some(Spanned::new(
-          TokenVariant::CloseBrace,
-          s.start,
-          s.end,
-        ))
-      }
-      TokenVariant::CloseParen => {
-        Some(Spanned::new(
-          TokenVariant::CloseParen,
-          s.start,
-          s.end,
-        ))
-      }
-      _ => {
-        None
-      }
+      TokenVariant::Semicolon => Some(
+        Spanned::new(TokenVariant::Semicolon, s.start, s.end),
+      ),
+      TokenVariant::CloseBrace => Some(
+        Spanned::new(TokenVariant::CloseBrace, s.start, s.end),
+      ),
+      TokenVariant::CloseParen => Some(
+        Spanned::new(TokenVariant::CloseParen, s.start, s.end),
+      ),
+      _ => None,
     }
   }
 
   fn binop(s: &Token) -> Option<BinOp> {
     match **s {
-      TokenVariant::Plus => {
-        Some(BinOp::Plus)
-      }
-      _ => {
-        None
-      }
+      TokenVariant::Plus => Some(BinOp::Plus),
+      _ => None,
     }
   }
 
@@ -280,26 +260,22 @@ impl<'src> Parser<'src> {
     }
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
-      TokenVariant::Integer(u) => {
-        Ok(Left(Spanned::new(
-          ExpressionVariant::IntLiteral(u),
+      TokenVariant::Integer(u) => Ok(Left(Spanned::new(
+        ExpressionVariant::IntLiteral(u),
+        start,
+        end,
+      ))),
+      TokenVariant::Ident(s) => Ok(Left(
+        Spanned::new(ExpressionVariant::Variable(s), start, end),
+      )),
+      tok => panic!(
+        "unimplemented expression: {:?}",
+        Spanned {
+          thing: tok,
           start,
           end,
-        )))
-      }
-      TokenVariant::Ident(s) => {
-        Ok(Left(Spanned::new(
-          ExpressionVariant::Variable(s),
-          start,
-          end,
-        )))
-      }
-      tok => {
-        panic!(
-          "unimplemented expression: {:?}",
-          Spanned { thing: tok, start, end },
-        )
-      }
+        },
+      ),
     }
   }
 
@@ -308,9 +284,7 @@ impl<'src> Parser<'src> {
       Right(tok) => {
         unexpected_token!(tok.thing, Expr, tok.start, tok.end)
       }
-      Left(e) => {
-        Ok(e)
-      }
+      Left(e) => Ok(e),
     }
   }
 
@@ -359,7 +333,8 @@ impl<'src> Parser<'src> {
     };
 
     match self.peek_token()?.thing {
-      TokenVariant::OpenParen => { // function call
+      TokenVariant::OpenParen => {
+        // function call
         self.get_token()?;
 
         let mut args = vec![];
@@ -370,7 +345,9 @@ impl<'src> Parser<'src> {
             Left(expr) => {
               if !expecting_arg {
                 let _ = ExpectedToken::ArgumentListContinuation;
-                panic!("I need to figure out a good way to do this");
+                panic!(
+                  "I need to figure out a good way to do this"
+                );
               }
               args.push(expr);
               if let None = maybe_eat_token!(self, Comma) {
@@ -396,10 +373,7 @@ impl<'src> Parser<'src> {
 
         if let ExpressionVariant::Variable(callee) = lhs.thing {
           Ok(Left(Spanned::new(
-            ExpressionVariant::Call {
-              callee,
-              args,
-            },
+            ExpressionVariant::Call { callee, args },
             lhs.start,
             end,
           )))
@@ -418,28 +392,22 @@ impl<'src> Parser<'src> {
 
   fn parse_expr_or_null(&mut self) -> ParserResult<Expression> {
     match self.maybe_parse_expr()? {
-      Left(expr) => {
-        Ok(expr)
-      }
-      Right(tok) => {
-        if Self::end_of_expr(&tok).is_some() {
-          Ok(Spanned::new(
-            ExpressionVariant::Nullary,
-            tok.start,
-            tok.end,
-          ))
-        } else {
-          unexpected_token!(tok.thing, Expr, tok.start, tok.end)
-        }
-      }
+      Left(expr) => Ok(expr),
+      Right(tok) => if Self::end_of_expr(&tok).is_some() {
+        Ok(Spanned::new(
+          ExpressionVariant::Nullary,
+          tok.start,
+          tok.end,
+        ))
+      } else {
+        unexpected_token!(tok.thing, Expr, tok.start, tok.end)
+      },
     }
   }
 
   fn parse_expr(&mut self) -> ParserResult<Expression> {
     match self.maybe_parse_expr()? {
-      Left(expr) => {
-        Ok(expr)
-      }
+      Left(expr) => Ok(expr),
       Right(tok) => {
         unexpected_token!(tok.thing, Expr, tok.start, tok.end)
       }
@@ -458,11 +426,9 @@ impl<'src> Parser<'src> {
     match thing {
       TokenVariant::Semicolon => {
         let start = expr.start;
-        Ok(Right(Spanned::new(
-          StatementVariant::Expr(expr),
-          start,
-          end,
-        )))
+        Ok(Right(
+          Spanned::new(StatementVariant::Expr(expr), start, end),
+        ))
       }
       // local variable
       TokenVariant::Colon => {
@@ -487,9 +453,7 @@ impl<'src> Parser<'src> {
           end,
         )))
       }
-      _ => {
-        unexpected_token!(thing, ExprEnd, start, end)
-      }
+      _ => unexpected_token!(thing, ExprEnd, start, end),
     }
   }
 
@@ -520,11 +484,7 @@ impl<'src> Parser<'src> {
           }
         }
         TokenVariant::CloseParen => {
-          return Ok(Spanned::new(
-            params,
-            open.start,
-            tok.end,
-          ));
+          return Ok(Spanned::new(params, open.start, tok.end));
         }
         _ => {
           return unexpected_token!(

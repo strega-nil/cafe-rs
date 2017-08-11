@@ -31,7 +31,7 @@ pub enum BinOp {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BinOpPrecedence {
-  Addition
+  Addition,
 }
 
 impl BinOp {
@@ -76,9 +76,9 @@ impl ExpressionVariant {
     funcs: &HashMap<String, mir::FunctionDecl>,
     locals: &HashMap<String, mir::Reference>,
   ) -> mir::Value {
-    let s32 = mir.get_type(&StringlyType::UserDefinedType(
-      "s32".to_owned(),
-    )).unwrap();
+    let s32 = mir
+      .get_type(&StringlyType::UserDefinedType("s32".to_owned()))
+      .unwrap();
     match *self {
       ExpressionVariant::IntLiteral(i) => {
         mir::Value::Literal(i as i32)
@@ -97,21 +97,15 @@ impl ExpressionVariant {
         ref op,
       } => {
         let lhs = {
-          let val = lhs.to_mir(
-            mir, builder, block, funcs, locals,
-          );
+          let val =
+            lhs.to_mir(mir, builder, block, funcs, locals);
           let tmp = builder.add_anonymous_local(s32);
           builder.add_stmt(block, tmp, val);
           tmp
         };
         let rhs = {
-          let val = rhs.to_mir(
-            mir,
-            builder,
-            block,
-            funcs,
-            locals,
-          );
+          let val =
+            rhs.to_mir(mir, builder, block, funcs, locals);
           let tmp = builder.add_anonymous_local(s32);
           builder.add_stmt(block, tmp, val);
           tmp
@@ -122,18 +116,16 @@ impl ExpressionVariant {
         ref callee,
         ref args,
       } => {
-        let args: Vec<_> =
-          args
-            .iter()
-            .map(|v| {
-              let val = v.to_mir(
-                mir, builder, block, funcs, locals,
-              );
-              let tmp = builder.add_anonymous_local(s32);
-              builder.add_stmt(block, tmp, val);
-              tmp
-            })
-            .collect();
+        let args: Vec<_> = args
+          .iter()
+          .map(|v| {
+            let val =
+              v.to_mir(mir, builder, block, funcs, locals);
+            let tmp = builder.add_anonymous_local(s32);
+            builder.add_stmt(block, tmp, val);
+            tmp
+          })
+          .collect();
         if let Some(&callee) = funcs.get(callee) {
           mir::Value::Call { callee, args }
         } else {
@@ -183,21 +175,19 @@ impl Function {
   ) {
     let s32 = mir.get_type(&self.thing.ret_ty).unwrap();
 
-    let mir_params =
-      self
-        .params
-        .iter()
-        .map(|&(_, ref ty)| {
-          mir.get_type(ty).unwrap()
-        })
-        .collect();
+    let mir_params = self
+      .params
+      .iter()
+      .map(|&(_, ref ty)| mir.get_type(ty).unwrap())
+      .collect();
 
     let mut builder =
       mir.get_function_builder(decl, mir_params, s32);
 
     let mut locals = HashMap::new();
     for (i, param) in self.params.iter().enumerate() {
-      locals.insert(param.0.clone(), builder.get_param(i as u32));
+      locals
+        .insert(param.0.clone(), builder.get_param(i as u32));
     }
 
     let block = builder.entrance();
@@ -205,15 +195,10 @@ impl Function {
       match **stmt {
         StatementVariant::Expr(ref e) => {
           let tmp = builder.add_anonymous_local(s32);
-          let mir_val = e.to_mir(
-            mir,
-            &mut builder,
-            block,
-            funcs,
-            &locals,
-          );
+          let mir_val =
+            e.to_mir(mir, &mut builder, block, funcs, &locals);
           builder.add_stmt(block, tmp, mir_val);
-        },
+        }
         StatementVariant::Local {
           ref name,
           ref ty,
@@ -221,25 +206,17 @@ impl Function {
         } => {
           let ty = mir.get_type(ty).unwrap();
           let ref_ = builder.add_local(name.clone(), ty);
-          let init = initializer.to_mir(
-            mir,
-            &mut builder,
-            block,
-            funcs,
-            &locals,
-          );
+          let init = initializer
+            .to_mir(mir, &mut builder, block, funcs, &locals);
           builder.add_stmt(block, ref_, init);
           locals.insert(name.clone(), ref_);
         }
       };
     }
-    let mir_val = self.blk.expr.to_mir(
-      mir,
-      &mut builder,
-      block,
-      funcs,
-      &locals,
-    );
+    let mir_val = self
+      .blk
+      .expr
+      .to_mir(mir, &mut builder, block, funcs, &locals);
     let ret = mir::Reference::ret();
     builder.add_stmt(block, ret, mir_val);
     mir.add_function_definition(builder)
@@ -348,16 +325,12 @@ impl Display for StringlyType {
 impl Display for StatementVariant {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match *self {
-      StatementVariant::Expr(ref e) => {
-        write!(f, "{}", **e)
-      }
+      StatementVariant::Expr(ref e) => write!(f, "{}", **e),
       StatementVariant::Local {
         ref name,
         ref ty,
         ref initializer,
-      } => {
-        write!(f, "{}: {} = {}", name, ty, **initializer)
-      }
+      } => write!(f, "{}: {} = {}", name, ty, **initializer),
     }
   }
 }
@@ -365,9 +338,7 @@ impl Display for StatementVariant {
 impl Display for BinOp {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match *self {
-      BinOp::Plus => {
-        write!(f, "+")
-      }
+      BinOp::Plus => write!(f, "+"),
     }
   }
 }
@@ -375,15 +346,13 @@ impl Display for BinOp {
 impl Display for ExpressionVariant {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match *self {
-      ExpressionVariant::IntLiteral(ref i) => {
-        write!(f, "{}", i)
-      }
-      ExpressionVariant::Variable(ref s) => {
-        write!(f, "{}", s)
-      }
-      ExpressionVariant::BinOp { ref lhs, ref rhs, ref op } => {
-        write!(f, "{} {} {}", lhs.thing, op, rhs.thing)
-      }
+      ExpressionVariant::IntLiteral(ref i) => write!(f, "{}", i),
+      ExpressionVariant::Variable(ref s) => write!(f, "{}", s),
+      ExpressionVariant::BinOp {
+        ref lhs,
+        ref rhs,
+        ref op,
+      } => write!(f, "{} {} {}", lhs.thing, op, rhs.thing),
       ExpressionVariant::Call {
         ref callee,
         ref args,
@@ -398,9 +367,7 @@ impl Display for ExpressionVariant {
           write!(f, ")")
         }
       }
-      ExpressionVariant::Nullary => {
-        write!(f, "()")
-      }
+      ExpressionVariant::Nullary => write!(f, "()"),
     }
   }
 }
