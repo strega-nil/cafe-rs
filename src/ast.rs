@@ -330,7 +330,7 @@ impl Display for StatementVariant {
         ref name,
         ref ty,
         ref initializer,
-      } => write!(f, "{}: {} = {}", name, ty, **initializer),
+      } => write!(f, "let {}: {} = {}", name, ty, **initializer),
     }
   }
 }
@@ -376,7 +376,7 @@ impl Display for Ast {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     for (name, func) in &self.funcs {
       let ref func = func.thing;
-      write!(f, "{} :: (", name)?;
+      write!(f, "func {}(", name)?;
       if !func.params.is_empty() {
         for p in &func.params[..func.params.len() - 1] {
           let (ref name, ref ty) = *p;
@@ -386,7 +386,7 @@ impl Display for Ast {
           func.params[func.params.len() - 1];
         write!(f, "{}: {}", name, ty)?;
       }
-      writeln!(f, ") -> {} {{", func.ret_ty)?;
+      writeln!(f, "): {} = {{", func.ret_ty)?;
       for stmt in &func.blk.statements {
         writeln!(f, "  {};", stmt.thing)?;
       }

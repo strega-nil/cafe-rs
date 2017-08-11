@@ -1,0 +1,4 @@
+func main(): s32 = {
+  let res: s32 = 0;
+  res
+}

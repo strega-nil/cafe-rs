@@ -22,18 +22,18 @@ comments:
     - a block comment shall start with a `/*`, end with a
       `*/`, and does nest.
 
-token :=
+token =
   | keyword
   | identifier
   | literal
   | separator
   | operator
 
-keyword :=
+keyword =
   | proc
+  | `let`
   # | `data`
-  # | `type`
-  # | `let`
+  # | `type` - NOTE: probably not going to be a keyword
   # | `if`
   # | `else`
   # | `true`
@@ -42,13 +42,13 @@ keyword :=
   # | `mut`
   # | `own`
 
-identifier :=
+identifier =
   | XID\_Start XID\_Continue*
 
-literal :=
+literal =
   | number-literal
 
-number-literal :=
+number-literal =
   | dec-digit-list+
   # | `0x` hex-digit-list+
   # | `0X` hex-digit-list+
@@ -57,14 +57,14 @@ number-literal :=
   # | `0o` oct-digit-list+
   # | `0O` oct-digit-list+
 
-dec-digit-list :=
+dec-digit-list =
   | dec-digit ` `?
 
-dec-digit :=
+dec-digit =
   | `0` | `1` | `2` | `3` | `4`
   | `5` | `6` | `7` | `8` | `9`
 
-binop :=
+binop =
   | `+`
   # | `++` |  `=` |
   # | `<`  | `>`  | `<=` | `>=` | `==` | `!=`
@@ -74,10 +74,10 @@ binop :=
   # | `^=` | `&=` | `|=`
   # | `&&` | `||`
 
-operator :=
-  | `->` | `::` | `:`  | `,`  | binop
+operator =
+  | `:` | `,` | `=` | binop
   # `=>`
 
-separator :=
+separator =
   | `(` | `)` | `{` | `}` | `;`
   # | `[` | `]` 

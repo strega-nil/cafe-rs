@@ -472,7 +472,7 @@ impl<'ctx> Mir<'ctx> {
     }
 
     for (name, ty) in &*self.types.hashmap() {
-      print!("type {} :: ", name);
+      print!("data {} = ", name);
       match *unsafe { &**ty } {
         TypeVariant::Builtin(_) => {
           println!("<builtin>;");
@@ -483,7 +483,7 @@ impl<'ctx> Mir<'ctx> {
     for &(ref name, ref value) in &self.funcs {
       let (name, value) =
         (name.as_ref().unwrap(), value.as_ref().unwrap());
-      print!("{} :: (", name);
+      print!("func {}(", name);
       if !value.params.tys.is_empty() {
         let tys = &value.params.tys;
         for par in &tys[..tys.len() - 1] {
@@ -491,19 +491,19 @@ impl<'ctx> Mir<'ctx> {
         }
         print!("{}", tys[tys.len() - 1].0);
       }
-      println!(") -> {} {{", value.ret_ty.0);
+      println!("): {} = {{", value.ret_ty.0);
 
-      println!("  locals: {{");
+      println!("  locals = {{");
       for loc_ty in &value.locals {
         println!("    {},", loc_ty.0);
       }
       println!("  }}");
 
-      println!("  bindings: {{");
+      println!("  bindings = {{");
       for (i, binding) in value.bindings.iter().enumerate() {
         match binding.kind {
           BindingKind::Return => {
-            println!("    <return>: {}", binding.ty.0)
+            println!("    <return>: {},", binding.ty.0)
           }
           BindingKind::Param(p) => {
             println!(
@@ -562,7 +562,7 @@ impl<'ctx> Mir<'ctx> {
       };
 
       for bb in &value.blks {
-        println!("  bb{}: {{", bb.num.0);
+        println!("  bb{} = {{", bb.num.0);
         for stmt in &bb.stmts {
           let Statement { ref lhs, ref rhs } = *stmt;
           if lhs.0 == 0 {

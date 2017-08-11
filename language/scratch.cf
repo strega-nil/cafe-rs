@@ -1,39 +1,8 @@
-func main() -> s32 :: {
+func main(): s32 = {
   add_two(10, 32)
 }
 
-func add_two(n: s32, m: s32) -> s32 :: {
-  res: s32 = n + m;
+func add_two(n: s32, m: s32): s32 = {
+  let res: s32 = n + m;
   res
 }
-
-/*
-main :: () -> s32 {
-  2 + 2
-}
-*/
-
-
-/*
-
-main :: () {
-  fib_log(15)
-}
-
-fib_log :: (n: u32) {
-  if n == 0 {
-    log(fib(0))
-  } else {
-    fib_log(n - 1);
-    log(fib(n));
-  }
-}
-
-fib :: (n: u32) -> u32 {
-  if n < 2 {
-    n
-  } else {
-    fib(n - 1) + fib(n - 2)
-  }
-}
-*/

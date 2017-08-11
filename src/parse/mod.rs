@@ -80,9 +80,8 @@ pub type Item = Spanned<ItemVariant>;
 
 #[derive(Clone, Debug)]
 pub enum ExpectedToken {
-  Item,
+  Ident,
   Type,
-  ExprEnd,
   Expr,
   Parameter,
   Argument,
@@ -188,6 +187,8 @@ macro_rules! maybe_eat_token {
   });
 }
 
+// NOTE(ubsan): once we get internal blocks, we should really
+// have one function for parsing both func and let definitions
 impl<'src> Parser<'src> {
   pub fn new(file: &'src str) -> Self {
     Parser {
@@ -215,19 +216,6 @@ impl<'src> Parser<'src> {
     }
   }
 
-  fn parse_type(&mut self) -> ParserResult<StringlyType> {
-    let Spanned { thing, start, end } = self.get_token()?;
-    match thing {
-      TokenVariant::Ident(s) => {
-        Ok(StringlyType::UserDefinedType(s))
-      }
-      //TokenVariant::And => unimplemented!(),
-      //TokenVariant::Star => unimplemented!(),
-      TokenVariant::OpenParen => unimplemented!(),
-      tok => unexpected_token!(tok, Type, start, end),
-    }
-  }
-
   fn end_of_expr(s: &Token) -> Option<Token> {
     match **s {
       TokenVariant::Semicolon => Some(
@@ -247,6 +235,19 @@ impl<'src> Parser<'src> {
     match **s {
       TokenVariant::Plus => Some(BinOp::Plus),
       _ => None,
+    }
+  }
+
+  fn parse_type(&mut self) -> ParserResult<StringlyType> {
+    let Spanned { thing, start, end } = self.get_token()?;
+    match thing {
+      TokenVariant::Ident(s) => {
+        Ok(StringlyType::UserDefinedType(s))
+      }
+      //TokenVariant::And => unimplemented!(),
+      //TokenVariant::Star => unimplemented!(),
+      TokenVariant::OpenParen => unimplemented!(),
+      tok => unexpected_token!(tok, Type, start, end),
     }
   }
 
@@ -409,44 +410,44 @@ impl<'src> Parser<'src> {
   fn parse_expr_or_stmt(
     &mut self,
   ) -> ParserResult<Either<Expression, Statement>> {
+    if let TokenVariant::KeywordLet = **self.peek_token()? {
+      let start = self.get_token()?.start;
+      let name = match self.get_token()? {
+        Token { thing: TokenVariant::Ident(name), ..  } => name,
+        t => {
+          return
+            unexpected_token!(t.thing, Ident, t.start, t.end);
+        }
+      };
+      eat_token!(self, Colon);
+      let ty = self.parse_type()?;
+      eat_token!(self, Equals);
+      let initializer = self.parse_expr()?;
+      let end = eat_token!(self, Semicolon).end;
+
+      return Ok(Right(Spanned::new(
+        StatementVariant::Local {
+          name,
+          ty,
+          initializer,
+        },
+        start,
+        end,
+      )));
+    }
     let expr = self.parse_expr_or_null()?;
+
     if let TokenVariant::CloseBrace = **self.peek_token()? {
       return Ok(Left(expr));
     }
 
-    let Spanned { thing, start, end } = self.get_token()?;
-    match thing {
-      TokenVariant::Semicolon => {
-        let start = expr.start;
-        Ok(Right(
-          Spanned::new(StatementVariant::Expr(expr), start, end),
-        ))
-      }
-      // local variable
-      TokenVariant::Colon => {
-        let name =
-          if let ExpressionVariant::Variable(s) = expr.thing {
-            s
-          } else {
-            panic!("invalid thing as a variable name");
-          };
-        let ty = self.parse_type()?;
-        // I'll allow non-initialized later
-        eat_token!(self, Equals);
-        let initializer = self.parse_expr()?;
-        let Spanned { end, .. } = eat_token!(self, Semicolon);
-        Ok(Right(Spanned::new(
-          StatementVariant::Local {
-            name,
-            ty,
-            initializer,
-          },
-          expr.start,
-          end,
-        )))
-      }
-      _ => unexpected_token!(thing, ExprEnd, start, end),
-    }
+    let end = eat_token!(self, Semicolon).end;
+    let start = expr.start;
+    Ok(Right(Spanned::new(
+      StatementVariant::Expr(expr),
+      start,
+      end,
+    )))
   }
 
   fn parse_param_list(
@@ -510,13 +511,13 @@ impl<'src> Parser<'src> {
       TokenVariant::Ident(name) => {
         let params = self.parse_param_list()?;
         let ret_ty = {
-          if let Some(_) = maybe_eat_token!(self, SkinnyArrow) {
+          if let Some(_) = maybe_eat_token!(self, Colon) {
             self.parse_type()?
           } else {
             StringlyType::Unit
           }
         };
-        eat_token!(self, ColonColon);
+        eat_token!(self, Equals);
         let blk = self.parse_block()?;
         let thing = ItemVariant::Function(FunctionValue {
           params: params.thing,
@@ -525,7 +526,7 @@ impl<'src> Parser<'src> {
         });
         Ok((name, Spanned::new(thing, start, blk.end)))
       }
-      tok => unexpected_token!(tok, Item, start, end),
+      tok => unexpected_token!(tok, Ident, start, end),
     }
   }
 

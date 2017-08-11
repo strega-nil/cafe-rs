@@ -2,37 +2,45 @@ NOTES:
   - types and values use different namespaces
   - a specific token shall be between ``
   - the special token empty shall be the absence of a token
+  - the definition syntax is not yet fully implemented in the
+    compiler
 
-file :=
+# idea: maybe allow leaving off the `=` before the `{` of a block
+
+file =
   | item-definition*
 
-item-definition :=
+item-definition =
   | func-definition
 
-func-definition := 
-  | `func` ident parameter-list opt-return-type `::` block
+func-definition = 
+  | `func` definition
 
-parameter-list := 
+definition-start =
+  | ident parameter-list? `:` type
+definition :=
+  # | definition-start block
+  | definition-start `=` block
+  | definition-start `=` expression `;`
+
+parameter-list = 
   | `(` parameter-list-no-parens `)`
-parameter-list-no-parens :=
+parameter-list-no-parens =
   | parameter `,`?
   | parameter `,` parameter-list-no-parens
-parameter :=
+parameter =
   | ident `:` type
 
-opt-return-type :=
-  | empty
-  | `->` type
-
-type :=
+type =
   | identifier
 
-block :=
+block =
   | `{` statement* expression `}`
 
-statement :=
+statement =
+  | `let` definition
   | expression `;`
 
-expression :=
+expression =
   | number-literal
   | expression binop expression

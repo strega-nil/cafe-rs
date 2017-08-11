@@ -37,6 +37,7 @@ pub enum TokenVariant {
   //KeywordIf,
   //KeywordElse,
   KeywordFunc,
+  KeywordLet,
   Ident(String),
   Integer(u64),
 
@@ -50,9 +51,7 @@ pub enum TokenVariant {
 
   // Declaration/Types/Assignment
   Colon,
-  ColonColon,
   Equals,
-  SkinnyArrow,
 
   // Separators
   Semicolon,
@@ -197,13 +196,20 @@ impl<'src> Lexer<'src> {
       ':' => match self.peekc() {
         Some((':', end_loc)) => {
           self.getc();
-          Ok(span!(TokenVariant::ColonColon, loc, end_loc))
+          Err(span!(
+            LexerErrorVariant::ReservedToken("::"),
+            loc,
+            end_loc,
+          ))
         }
-        Some(('=', end_loc)) => Err(span!(
-          LexerErrorVariant::ReservedToken(":="),
-          loc,
-          end_loc,
-        )),
+        Some(('=', end_loc)) => {
+          self.getc();
+          Err(span!(
+            LexerErrorVariant::ReservedToken(":="),
+            loc,
+            end_loc,
+          ))
+        }
         _ => Ok(span!(TokenVariant::Colon, loc, loc)),
       },
       ',' => Ok(span!(TokenVariant::Comma, loc, loc)),
@@ -241,16 +247,27 @@ impl<'src> Lexer<'src> {
       '-' => match self.peekc() {
         Some(('>', end_loc)) => {
           self.getc();
-          Ok(span!(TokenVariant::SkinnyArrow, loc, end_loc))
+          Err(span!(
+            LexerErrorVariant::ReservedToken("->"),
+            loc,
+            end_loc,
+          ))
         }
-        Some(('=', end_loc)) => Err(span!(
-          LexerErrorVariant::ReservedToken("-="),
-          loc,
-          end_loc,
-        )),
-        _ => Err(
-          span!(LexerErrorVariant::ReservedToken("-"), loc, loc),
-        ),
+        Some(('=', end_loc)) => {
+          self.getc();
+          Err(span!(
+            LexerErrorVariant::ReservedToken("-="),
+            loc,
+            end_loc,
+          ))
+        }
+        _ => {
+          Err(span!(
+            LexerErrorVariant::ReservedToken("-"),
+            loc,
+            loc,
+          ))
+        }
       },
       '*' => match self.peekc() {
         Some(('=', end_loc)) => Err(span!(
@@ -328,12 +345,14 @@ impl<'src> Lexer<'src> {
           ))
         };
         // keyword
-        let tok = if ident == "type" {
+        let tok = if ident == "func" {
+          TokenVariant::KeywordFunc
+        } else if ident == "let" {
+          TokenVariant::KeywordLet
+        } else if ident == "type" {
           return err("type");
         } else if ident == "data" {
           return err("data");
-        } else if ident == "let" {
-          return err("let");
         } else if ident == "if" {
           return err("if");
         } else if ident == "else" {
@@ -348,8 +367,6 @@ impl<'src> Lexer<'src> {
           return err("mut");
         } else if ident == "own" {
           return err("own");
-        } else if ident == "func" {
-          TokenVariant::KeywordFunc
         } else {
           TokenVariant::Ident(ident)
         };
