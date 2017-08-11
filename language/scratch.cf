@@ -1,8 +1,8 @@
-main :: () -> s32 {
+func main() -> s32 :: {
   add_two(10, 32)
 }
 
-add_two :: (n: s32, m: s32) -> s32 {
+func add_two(n: s32, m: s32) -> s32 :: {
   res: s32 = n + m;
   res
 }

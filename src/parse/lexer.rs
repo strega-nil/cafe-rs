@@ -36,6 +36,7 @@ pub enum TokenVariant {
   //KeywordFalse,
   //KeywordIf,
   //KeywordElse,
+  KeywordFunc,
   Ident(String),
   Integer(u64),
 
@@ -347,6 +348,8 @@ impl<'src> Lexer<'src> {
           return err("mut");
         } else if ident == "own" {
           return err("own");
+        } else if ident == "func" {
+          TokenVariant::KeywordFunc
         } else {
           TokenVariant::Ident(ident)
         };

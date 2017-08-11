@@ -520,10 +520,10 @@ impl<'src> Parser<'src> {
   fn parse_item_definition(
     &mut self,
   ) -> ParserResult<(String, Item)> {
+    eat_token!(self, KeywordFunc);
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
       TokenVariant::Ident(name) => {
-        eat_token!(self, ColonColon);
         let params = self.parse_param_list()?;
         let ret_ty = {
           if let Some(_) = maybe_eat_token!(self, SkinnyArrow) {
@@ -532,6 +532,7 @@ impl<'src> Parser<'src> {
             StringlyType::Unit
           }
         };
+        eat_token!(self, ColonColon);
         let blk = self.parse_block()?;
         let thing = ItemVariant::Function(FunctionValue {
           params: params.thing,
