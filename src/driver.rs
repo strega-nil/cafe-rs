@@ -70,7 +70,7 @@ fn main() {
   }
   if print_run {
     println!("    ===   RUN   ===    ");
-    println!("{:?}", mir.run());
+    println!("{}", mir.run());
   } else {
     mir.run();
   }

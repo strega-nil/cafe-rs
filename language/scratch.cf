@@ -1,8 +1,4 @@
 func main(): s32 = {
-  add_two(10, 32)
-}
-
-func add_two(n: s32, m: s32): s32 = {
-  let res: s32 = n + m;
-  res
+  true;
+  0
 }

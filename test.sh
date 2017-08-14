@@ -10,5 +10,5 @@ echo
 for file in language/tests/*.cf
 do
   echo "compiling $file"
-  cargo run -q -- --no-output "$file" || fail $?
+  cargo run -q -- "$file" || fail $?
 done

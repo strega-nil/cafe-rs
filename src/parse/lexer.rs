@@ -32,8 +32,8 @@ pub enum TokenVariant {
   CloseParen,
 
   // Expression
-  //KeywordTrue,
-  //KeywordFalse,
+  KeywordTrue,
+  KeywordFalse,
   //KeywordIf,
   //KeywordElse,
   KeywordFunc,
@@ -349,6 +349,10 @@ impl<'src> Lexer<'src> {
           TokenVariant::KeywordFunc
         } else if ident == "let" {
           TokenVariant::KeywordLet
+        } else if ident == "true" {
+          TokenVariant::KeywordTrue
+        } else if ident == "false" {
+          TokenVariant::KeywordFalse
         } else if ident == "type" {
           return err("type");
         } else if ident == "data" {
@@ -357,10 +361,6 @@ impl<'src> Lexer<'src> {
           return err("if");
         } else if ident == "else" {
           return err("else");
-        } else if ident == "true" {
-          return err("true");
-        } else if ident == "false" {
-          return err("false");
         } else if ident == "raw" {
           return err("raw");
         } else if ident == "mut" {

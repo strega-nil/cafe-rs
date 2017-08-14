@@ -46,6 +46,7 @@ impl BinOp {
 pub enum ExpressionVariant {
   Nullary,
   IntLiteral(u64),
+  BoolLiteral(bool),
   Variable(String),
   BinOp {
     lhs: Box<Expression>,
@@ -58,6 +59,31 @@ pub enum ExpressionVariant {
   },
 }
 impl ExpressionVariant {
+  fn ty<'ctx>(&self, mir: &Mir<'ctx>) -> mir::Type<'ctx> {
+    match *self {
+      ExpressionVariant::Nullary => {
+        panic!("nil type is unimplemented")
+      },
+      ExpressionVariant::IntLiteral(_) => {
+        mir.get_builtin_type(
+          mir::BuiltinType::SInt(mir::IntSize::I32)
+        )
+      },
+      ExpressionVariant::BoolLiteral(_) => {
+        mir.get_builtin_type(mir::BuiltinType::Bool)
+      },
+      ExpressionVariant::Variable(ref name) => {
+        unimplemented!()
+      },
+      ExpressionVariant::BinOp { ref lhs, .. } => {
+        unimplemented!()
+      },
+      ExpressionVariant::Call { ref callee, .. } => {
+        unimplemented!()
+      },
+    }
+  }
+
   fn mir_binop(
     op: BinOp,
     lhs: mir::Reference,
@@ -76,12 +102,15 @@ impl ExpressionVariant {
     funcs: &HashMap<String, mir::FunctionDecl>,
     locals: &HashMap<String, mir::Reference>,
   ) -> mir::Value {
-    let s32 = mir
-      .get_type(&StringlyType::UserDefinedType("s32".to_owned()))
-      .unwrap();
+    let s32 = mir.get_builtin_type(
+      mir::BuiltinType::SInt(mir::IntSize::I32)
+    );
     match *self {
       ExpressionVariant::IntLiteral(i) => {
-        mir::Value::Literal(i as i32)
+        mir::Value::int_lit(i as i32)
+      }
+      ExpressionVariant::BoolLiteral(b) => {
+        mir::Value::bool_lit(b)
       }
       ExpressionVariant::Variable(ref name) => {
         // will panic for now - should be caught in typeck
@@ -173,16 +202,15 @@ impl Function {
     funcs: &HashMap<String, mir::FunctionDecl>,
     mir: &mut Mir<'ctx>,
   ) {
-    let s32 = mir.get_type(&self.thing.ret_ty).unwrap();
-
     let mir_params = self
       .params
       .iter()
       .map(|&(_, ref ty)| mir.get_type(ty).unwrap())
       .collect();
 
+    let ret_ty = mir.get_type(&self.ret_ty).unwrap();
     let mut builder =
-      mir.get_function_builder(decl, mir_params, s32);
+      mir.get_function_builder(decl, mir_params, ret_ty);
 
     let mut locals = HashMap::new();
     for (i, param) in self.params.iter().enumerate() {
@@ -194,7 +222,9 @@ impl Function {
     for stmt in &self.blk.statements {
       match **stmt {
         StatementVariant::Expr(ref e) => {
-          let tmp = builder.add_anonymous_local(s32);
+          let tmp = builder.add_anonymous_local(
+            e.ty(mir)
+          );
           let mir_val =
             e.to_mir(mir, &mut builder, block, funcs, &locals);
           builder.add_stmt(block, tmp, mir_val);
@@ -310,6 +340,10 @@ impl Ast {
       Some(String::from("s32")),
       mir::TypeVariant::s32(),
     );
+    mir.insert_type(
+      Some(String::from("bool")),
+      mir::TypeVariant::bool(),
+    );
   }
 }
 
@@ -346,7 +380,8 @@ impl Display for BinOp {
 impl Display for ExpressionVariant {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match *self {
-      ExpressionVariant::IntLiteral(ref i) => write!(f, "{}", i),
+      ExpressionVariant::IntLiteral(i) => write!(f, "{}", i),
+      ExpressionVariant::BoolLiteral(b) => write!(f, "{}", b),
       ExpressionVariant::Variable(ref s) => write!(f, "{}", s),
       ExpressionVariant::BinOp {
         ref lhs,

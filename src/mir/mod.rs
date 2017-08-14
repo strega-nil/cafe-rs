@@ -1,5 +1,6 @@
 // TODO(ubsan): make sure to start dealing with Spanneds
 // whee errors are fun
+// TODO(ubsan): impl Display for Literal
 
 mod runner;
 
@@ -52,19 +53,21 @@ impl IntSize {
 pub enum BuiltinType {
   SInt(IntSize),
   //UInt(IntSize),
-  //Bool,
+  Bool,
 }
 
 impl BuiltinType {
   fn size(&self) -> u32 {
     match *self {
       BuiltinType::SInt(sz) => sz.size(),
+      BuiltinType::Bool => 1,
     }
   }
 
   fn align(&self) -> u32 {
     match *self {
       BuiltinType::SInt(sz) => sz.size(),
+      BuiltinType::Bool => 1,
     }
   }
 }
@@ -74,6 +77,9 @@ impl Display for BuiltinType {
     match *self {
       BuiltinType::SInt(size) => {
         write!(f, "s{}", size.size_bits())
+      }
+      BuiltinType::Bool => {
+        write!(f, "bool")
       }
     }
   }
@@ -104,6 +110,9 @@ impl<'ctx> TypeVariant<'ctx> {
   pub fn s32() -> Self {
     TypeVariant::Builtin(BuiltinType::SInt(IntSize::I32))
   }
+  pub fn bool() -> Self {
+    TypeVariant::Builtin(BuiltinType::Bool)
+  }
 }
 impl<'ctx> Display for TypeVariant<'ctx> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -130,14 +139,29 @@ impl Reference {
 }
 
 #[derive(Debug)]
+pub enum Literal {
+  Int(i32),
+  Bool(bool),
+}
+
+#[derive(Debug)]
 pub enum Value {
-  Literal(i32),
+  Literal(Literal),
   Reference(Reference),
   Add(Reference, Reference),
   Call {
     callee: FunctionDecl,
     args: Vec<Reference>,
   },
+}
+
+impl Value {
+  pub fn int_lit(i: i32) -> Self {
+    Value::Literal(Literal::Int(i))
+  }
+  pub fn bool_lit(b: bool) -> Self {
+    Value::Literal(Literal::Bool(b))
+  }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -222,6 +246,10 @@ impl<'ctx> TypeList<'ctx> {
     &'a self,
   ) -> iter::Cloned<slice::Iter<'a, Type<'ctx>>> {
     self.tys.iter().cloned()
+  }
+
+  fn get(&self, idx: u32) -> Type<'ctx> {
+    self.tys[idx as usize]
   }
 }
 
@@ -459,6 +487,22 @@ impl<'ctx> Mir<'ctx> {
       _ => unimplemented!(),
     }
   }
+
+  pub fn get_builtin_type(&self, ty: BuiltinType) -> Type<'ctx> {
+    let name = match ty {
+      BuiltinType::SInt(IntSize::I32) => "s32",
+      BuiltinType::Bool => "bool",
+    };
+    match self.types.get(name) {
+      Some(t) => Type(t),
+      None => {
+        panic!(
+          "the ast implementor forgot to add `{}` to mir types",
+          name,
+        )
+      }
+    }
+  }
 }
 
 impl<'ctx> Mir<'ctx> {
@@ -528,8 +572,8 @@ impl<'ctx> Mir<'ctx> {
       println!("  }}");
 
       let print_value = |val: &Value| match *val {
-        Value::Literal(n) => {
-          println!("literal {};", n);
+        Value::Literal(ref n) => {
+          println!("literal {:?};", n);
         }
         Value::Reference(r) => {
           print_binding(&value.bindings, r);

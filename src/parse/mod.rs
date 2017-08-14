@@ -267,6 +267,20 @@ impl<'src> Parser<'src> {
       TokenVariant::Ident(s) => Ok(Left(
         Spanned::new(ExpressionVariant::Variable(s), start, end),
       )),
+      TokenVariant::KeywordTrue => {
+        Ok(Left(Spanned::new(
+          ExpressionVariant::BoolLiteral(true),
+          start,
+          end,
+        )))
+      }
+      TokenVariant::KeywordFalse => {
+        Ok(Left(Spanned::new(
+          ExpressionVariant::BoolLiteral(false),
+          start,
+          end,
+        )))
+      }
       tok => panic!(
         "unimplemented expression: {:?}",
         Spanned {
