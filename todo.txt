@@ -1,10 +1,17 @@
-- non-s32 types
-  - ()
-  - bool
-- typechecking!
+- add more tests
+
 - `<=`
 - if-else
-- add more tests
-- reference functions parameters
-- non-addition operators
+
+- typechecking!
+
+- add ()
+- side-effecting functions (`log`)
+
+- blocks
+
 - unary operators (-, +)
+- checking to see if a number is in range
+
+- non-addition operators
+- reference functions parameters

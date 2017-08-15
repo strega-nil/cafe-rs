@@ -30,10 +30,12 @@ token =
   | operator
 
 keyword =
-  | proc
+  | `proc`
   | `let`
+  | `if`
+  | `else`
   # | `data`
-  # | `type` - NOTE: probably not going to be a keyword
+  # | `type`
   # | `if`
   # | `else`
   # | `true`
@@ -65,9 +67,9 @@ dec-digit =
   | `5` | `6` | `7` | `8` | `9`
 
 binop =
-  | `+`
+  | `+` | `<=`
   # | `++` |  `=` |
-  # | `<`  | `>`  | `<=` | `>=` | `==` | `!=`
+  # | `<`  | `>`  | `>=` | `==` | `!=`
   # | `-`  | `*`  | `/`  | `%`
   # | `+=` | `-=` | `*=` | `/=` | `%=`
   # | `^`  | `&`  | `|`

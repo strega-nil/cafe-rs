@@ -11,16 +11,12 @@ file =
   | item-definition*
 
 item-definition =
-  | func-definition
-
-func-definition = 
   | `func` definition
 
 definition-start =
   | ident parameter-list? `:` type
 definition :=
-  # | definition-start block
-  | definition-start `=` block
+  | definition-start block
   | definition-start `=` expression `;`
 
 parameter-list = 
@@ -44,3 +40,5 @@ statement =
 expression =
   | number-literal
   | expression binop expression
+  | `if` expression `{` expression `}`
+    -- NOTE(ubsan): should just take a block

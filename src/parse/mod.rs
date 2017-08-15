@@ -281,6 +281,25 @@ impl<'src> Parser<'src> {
           end,
         )))
       }
+      TokenVariant::KeywordIf => {
+        Ok(Left(Spanned::new(
+          ExpressionVariant::IfElse {
+            cond: Box::new(cond),
+            then: Box::new(then),
+            els: Box::new(els),
+          },
+          start,
+          end
+        )))
+      }
+      TokenVariant::KeywordElse => {
+        unexpected_token!(
+          TokenVariant::KeywordElse,
+          Expr,
+          start,
+          end,
+        );
+      }
       tok => panic!(
         "unimplemented expression: {:?}",
         Spanned {
@@ -531,7 +550,6 @@ impl<'src> Parser<'src> {
             StringlyType::Unit
           }
         };
-        eat_token!(self, Equals);
         let blk = self.parse_block()?;
         let thing = ItemVariant::Function(FunctionValue {
           params: params.thing,

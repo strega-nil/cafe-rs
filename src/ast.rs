@@ -48,6 +48,11 @@ pub enum ExpressionVariant {
   IntLiteral(u64),
   BoolLiteral(bool),
   Variable(String),
+  IfElse {
+    cond: Box<Expression>,
+    then: Box<Expression>,
+    els: Box<Expression>,
+  },
   BinOp {
     lhs: Box<Expression>,
     rhs: Box<Expression>,
