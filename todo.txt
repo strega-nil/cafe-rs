@@ -1,8 +1,5 @@
 - add more tests
 
-- `<=`
-- if-else
-
 - typechecking!
 
 - add ()
