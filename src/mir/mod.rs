@@ -149,6 +149,7 @@ pub enum Value {
   Literal(Literal),
   Reference(Reference),
   Add(Reference, Reference),
+  LessEq(Reference, Reference),
   Call {
     callee: FunctionDecl,
     args: Vec<Reference>,
@@ -181,8 +182,13 @@ struct Binding<'ctx> {
 #[derive(Copy, Clone, Debug)]
 pub struct Block(u32);
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Terminator {
+  IfElse {
+    cond: Reference,
+    then: Block,
+    els: Block,
+  },
   Goto(Block),
   Return,
 }
@@ -195,9 +201,24 @@ struct Statement {
 
 #[derive(Debug)]
 struct BlockData {
-  num: Block,
   stmts: Vec<Statement>,
   term: Terminator,
+}
+
+impl BlockData {
+  fn new() -> Self {
+    BlockData {
+      stmts: vec![],
+      term: Terminator::Return,
+    }
+  }
+
+  fn with_term(term: Terminator) -> Self {
+    BlockData {
+      stmts: vec![],
+      term,
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -281,6 +302,7 @@ pub struct FunctionBuilder<'ctx> {
   bindings: Vec<Binding<'ctx>>,
 }
 
+// creation and misc
 impl<'ctx> FunctionBuilder<'ctx> {
   fn new(
     decl: FunctionDecl,
@@ -290,12 +312,10 @@ impl<'ctx> FunctionBuilder<'ctx> {
     ret_ty: Type<'ctx>,
   ) -> Self {
     let enter_block = BlockData {
-      num: Block(0),
       stmts: vec![],
       term: Terminator::Goto(Block(1)),
     };
     let exit_block = BlockData {
-      num: Block(1),
       stmts: vec![],
       term: Terminator::Return,
     };
@@ -332,6 +352,7 @@ impl<'ctx> FunctionBuilder<'ctx> {
   }
 }
 
+// modification
 impl<'ctx> FunctionBuilder<'ctx> {
   pub fn add_stmt(
     &mut self,
@@ -341,6 +362,41 @@ impl<'ctx> FunctionBuilder<'ctx> {
   ) {
     let blk_data = &mut self.blks[blk.0 as usize];
     blk_data.stmts.push(Statement { lhs, rhs });
+  }
+
+  // NOTE(ubsan): the returned blocks initially have
+  // the same terminator as their parent
+  pub fn term_if_else(
+    &mut self,
+    blk: Block,
+    cond: Reference,
+  ) -> (Block, Block, Block) {
+    let (then, els, final_bb) = {
+      let term = self.blks[blk.0 as usize].term;
+      self.blks.push(BlockData::new());
+      self.blks.push(BlockData::new());
+      self.blks.push(BlockData::with_term(term));
+      let final_bb = Block((self.blks.len() - 1) as u32);
+
+      let len = self.blks.len();
+      self.blks[len - 3].term =
+        Terminator::Goto(final_bb);
+      self.blks[len - 2].term =
+        Terminator::Goto(final_bb);
+
+      (
+        Block((len - 3) as u32),
+        Block((len - 2) as u32),
+        final_bb,
+      )
+    };
+
+    self.blks[blk.0 as usize].term = Terminator::IfElse {
+      cond,
+      then,
+      els,
+    };
+    (then, els, final_bb)
   }
 
   pub fn add_anonymous_local(
@@ -408,6 +464,7 @@ pub struct Mir<'ctx> {
   types: &'ctx ArenaMap<String, TypeVariant<'ctx>>,
 }
 
+// creation and run
 impl<'ctx> Mir<'ctx> {
   pub fn new(ctx: &'ctx MirCtxt<'ctx>, mut ast: Ast) -> Self {
     let mut self_: Mir<'ctx> = Mir {
@@ -430,19 +487,8 @@ impl<'ctx> Mir<'ctx> {
   }
 }
 
+// functions
 impl<'ctx> Mir<'ctx> {
-  pub fn insert_type(
-    &self,
-    name: Option<String>,
-    ty: TypeVariant<'ctx>,
-  ) -> Type<'ctx> {
-    if let Some(name) = name {
-      Type(self.types.insert(name, ty))
-    } else {
-      Type(self.types.insert_anonymous(ty))
-    }
-  }
-
   pub fn add_function_decl(
     &mut self,
     name: Option<String>,
@@ -475,6 +521,21 @@ impl<'ctx> Mir<'ctx> {
 
     self.funcs[builder.decl.0].1 = Some(value);
   }
+}
+
+// types
+impl<'ctx> Mir<'ctx> {
+  pub fn insert_type(
+    &self,
+    name: Option<String>,
+    ty: TypeVariant<'ctx>,
+  ) -> Type<'ctx> {
+    if let Some(name) = name {
+      Type(self.types.insert(name, ty))
+    } else {
+      Type(self.types.insert_anonymous(ty))
+    }
+  }
 
   pub fn get_type(
     &self,
@@ -505,6 +566,7 @@ impl<'ctx> Mir<'ctx> {
   }
 }
 
+// printing
 impl<'ctx> Mir<'ctx> {
   pub fn print(&self) {
     fn binding_name(binding: &Option<String>) -> &str {
@@ -585,6 +647,12 @@ impl<'ctx> Mir<'ctx> {
           print_binding(&value.bindings, rhs);
           println!(";");
         }
+        Value::LessEq(lhs, rhs) => {
+          print_binding(&value.bindings, lhs);
+          print!(" <= ");
+          print_binding(&value.bindings, rhs);
+          println!(";");
+        }
         Value::Call {
           ref callee,
           ref args,
@@ -605,8 +673,8 @@ impl<'ctx> Mir<'ctx> {
         }
       };
 
-      for bb in &value.blks {
-        println!("  bb{} = {{", bb.num.0);
+      for (n, bb) in value.blks.iter().enumerate() {
+        println!("  bb{} = {{", n);
         for stmt in &bb.stmts {
           let Statement { ref lhs, ref rhs } = *stmt;
           if lhs.0 == 0 {
@@ -624,6 +692,14 @@ impl<'ctx> Mir<'ctx> {
           }
           Terminator::Return => {
             println!("    return;");
+          }
+          Terminator::IfElse { cond, then, els } => {
+            print!("    if ");
+            print_binding(&value.bindings, cond);
+            println!(" {{ bb{} }} else {{ bb{} }}",
+              then.0,
+              els.0,
+            );
           }
         }
         println!("  }}");

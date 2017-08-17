@@ -27,17 +27,20 @@ pub enum StringlyType {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum BinOp {
   Plus,
+  LessEq,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum BinOpPrecedence {
   Addition,
+  Comparison,
 }
 
 impl BinOp {
   pub fn precedence(self) -> BinOpPrecedence {
     match self {
       BinOp::Plus => BinOpPrecedence::Addition,
+      BinOp::LessEq => BinOpPrecedence::Comparison,
     }
   }
 }
@@ -77,13 +80,16 @@ impl ExpressionVariant {
       ExpressionVariant::BoolLiteral(_) => {
         mir.get_builtin_type(mir::BuiltinType::Bool)
       },
-      ExpressionVariant::Variable(ref name) => {
+      ExpressionVariant::Variable(_) => {
         unimplemented!()
       },
-      ExpressionVariant::BinOp { ref lhs, .. } => {
+      ExpressionVariant::IfElse { .. } => {
         unimplemented!()
       },
-      ExpressionVariant::Call { ref callee, .. } => {
+      ExpressionVariant::BinOp { .. } => {
+        unimplemented!()
+      },
+      ExpressionVariant::Call { .. } => {
         unimplemented!()
       },
     }
@@ -96,34 +102,63 @@ impl ExpressionVariant {
   ) -> mir::Value {
     match op {
       BinOp::Plus => mir::Value::Add(lhs, rhs),
+      BinOp::LessEq => mir::Value::LessEq(lhs, rhs),
     }
   }
   fn to_mir<'ctx>(
     &self,
+    dst: mir::Reference,
     // TODO(ubsan): this state should probably all be in a struct
     mir: &mut Mir<'ctx>,
     builder: &mut mir::FunctionBuilder<'ctx>,
     block: mir::Block,
     funcs: &HashMap<String, mir::FunctionDecl>,
     locals: &HashMap<String, mir::Reference>,
-  ) -> mir::Value {
+  ) -> mir::Block {
     let s32 = mir.get_builtin_type(
       mir::BuiltinType::SInt(mir::IntSize::I32)
     );
+    let bool = mir.get_builtin_type(
+      mir::BuiltinType::Bool
+    );
     match *self {
       ExpressionVariant::IntLiteral(i) => {
-        mir::Value::int_lit(i as i32)
+        builder.add_stmt(
+          block,
+          dst,
+          mir::Value::int_lit(i as i32),
+        )
       }
       ExpressionVariant::BoolLiteral(b) => {
-        mir::Value::bool_lit(b)
+        builder.add_stmt(block, dst, mir::Value::bool_lit(b))
       }
       ExpressionVariant::Variable(ref name) => {
         // will panic for now - should be caught in typeck
         if let Some(&loc) = locals.get(name) {
-          mir::Value::Reference(loc)
+          builder.add_stmt(
+            block,
+            dst,
+            mir::Value::Reference(loc),
+          );
         } else {
           panic!("no `{}` name found", name);
         }
+      }
+      ExpressionVariant::IfElse {
+        ref cond,
+        ref then,
+        ref els,
+      } => {
+        let cond = {
+          let var = builder.add_anonymous_local(bool);
+          cond.to_mir(var, mir, builder, block, funcs, locals);
+          var
+        };
+        let (then_bb, els_bb, final_bb) =
+          builder.term_if_else(block, cond);
+        then.to_mir(dst, mir, builder, then_bb, funcs, locals);
+        els.to_mir(dst, mir, builder, els_bb, funcs, locals);
+        return final_bb;
       }
       ExpressionVariant::BinOp {
         ref lhs,
@@ -131,20 +166,20 @@ impl ExpressionVariant {
         ref op,
       } => {
         let lhs = {
-          let val =
-            lhs.to_mir(mir, builder, block, funcs, locals);
-          let tmp = builder.add_anonymous_local(s32);
-          builder.add_stmt(block, tmp, val);
-          tmp
+          let var = builder.add_anonymous_local(s32);
+          lhs.to_mir(var, mir, builder, block, funcs, locals);
+          var
         };
         let rhs = {
-          let val =
-            rhs.to_mir(mir, builder, block, funcs, locals);
-          let tmp = builder.add_anonymous_local(s32);
-          builder.add_stmt(block, tmp, val);
-          tmp
+          let var = builder.add_anonymous_local(s32);
+          rhs.to_mir(var, mir, builder, block, funcs, locals);
+          var
         };
-        Self::mir_binop(*op, lhs, rhs)
+        builder.add_stmt(
+          block,
+          dst,
+          Self::mir_binop(*op, lhs, rhs),
+        );
       }
       ExpressionVariant::Call {
         ref callee,
@@ -153,23 +188,27 @@ impl ExpressionVariant {
         let args: Vec<_> = args
           .iter()
           .map(|v| {
-            let val =
-              v.to_mir(mir, builder, block, funcs, locals);
-            let tmp = builder.add_anonymous_local(s32);
-            builder.add_stmt(block, tmp, val);
-            tmp
+            let var = builder.add_anonymous_local(s32);
+            v.to_mir(var, mir, builder, block, funcs, locals);
+            var
           })
           .collect();
         if let Some(&callee) = funcs.get(callee) {
-          mir::Value::Call { callee, args }
+          builder.add_stmt(
+            block,
+            dst,
+            mir::Value::Call { callee, args }
+          )
         } else {
           panic!("function `{}` doesn't exist", callee);
         }
       }
       ExpressionVariant::Nullary => {
-        panic!("non-s32 types not yet supported")
+        panic!("nullary types not yet supported")
       }
     }
+
+    block
   }
 }
 pub type Expression = Spanned<ExpressionVariant>;
@@ -230,9 +269,14 @@ impl Function {
           let tmp = builder.add_anonymous_local(
             e.ty(mir)
           );
-          let mir_val =
-            e.to_mir(mir, &mut builder, block, funcs, &locals);
-          builder.add_stmt(block, tmp, mir_val);
+          e.to_mir(
+            tmp,
+            mir,
+            &mut builder,
+            block,
+            funcs,
+            &locals,
+          );
         }
         StatementVariant::Local {
           ref name,
@@ -240,20 +284,24 @@ impl Function {
           ref initializer,
         } => {
           let ty = mir.get_type(ty).unwrap();
-          let ref_ = builder.add_local(name.clone(), ty);
-          let init = initializer
-            .to_mir(mir, &mut builder, block, funcs, &locals);
-          builder.add_stmt(block, ref_, init);
-          locals.insert(name.clone(), ref_);
+          let var = builder.add_local(name.clone(), ty);
+          initializer.to_mir(
+            var,
+            mir,
+            &mut builder,
+            block,
+            funcs,
+            &locals,
+          );
+          locals.insert(name.clone(), var);
         }
       };
     }
-    let mir_val = self
+    let ret = mir::Reference::ret();
+    self
       .blk
       .expr
-      .to_mir(mir, &mut builder, block, funcs, &locals);
-    let ret = mir::Reference::ret();
-    builder.add_stmt(block, ret, mir_val);
+      .to_mir(ret, mir, &mut builder, block, funcs, &locals);
     mir.add_function_definition(builder)
   }
 }
@@ -378,6 +426,7 @@ impl Display for BinOp {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     match *self {
       BinOp::Plus => write!(f, "+"),
+      BinOp::LessEq => write!(f, "<="),
     }
   }
 }
@@ -393,6 +442,22 @@ impl Display for ExpressionVariant {
         ref rhs,
         ref op,
       } => write!(f, "{} {} {}", lhs.thing, op, rhs.thing),
+      ExpressionVariant::IfElse {
+        ref cond,
+        ref then,
+        ref els,
+      } => {
+        write!(f,
+r"if {} {{
+    {}
+  }} else {{
+    {}
+  }}",
+          cond.thing,
+          then.thing,
+          els.thing,
+        )
+      }
       ExpressionVariant::Call {
         ref callee,
         ref args,

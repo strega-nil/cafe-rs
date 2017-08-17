@@ -134,6 +134,18 @@ macro_rules! unexpected_token {
       end: $end,
     })
   });
+  (
+    $tok:expr,
+    $expected:ident
+    $(,)*
+  ) => ({
+    unexpected_token!(
+      $tok.thing,
+      $expected,
+      $tok.start,
+      $tok.end,
+    )
+  });
 }
 
 macro_rules! allow_eof {
@@ -258,31 +270,42 @@ impl<'src> Parser<'src> {
       return Ok(Right(tok));
     }
     let Spanned { thing, start, end } = self.get_token()?;
-    match thing {
-      TokenVariant::Integer(u) => Ok(Left(Spanned::new(
-        ExpressionVariant::IntLiteral(u),
-        start,
-        end,
-      ))),
-      TokenVariant::Ident(s) => Ok(Left(
-        Spanned::new(ExpressionVariant::Variable(s), start, end),
-      )),
+
+    let mut expr = match thing {
+      TokenVariant::Integer(u) => {
+        Spanned::new(
+          ExpressionVariant::IntLiteral(u),
+          start,
+          end,
+        )
+      }
+      TokenVariant::Ident(s) => {
+        Spanned::new(ExpressionVariant::Variable(s), start, end)
+      }
       TokenVariant::KeywordTrue => {
-        Ok(Left(Spanned::new(
+        Spanned::new(
           ExpressionVariant::BoolLiteral(true),
           start,
           end,
-        )))
+        )
       }
       TokenVariant::KeywordFalse => {
-        Ok(Left(Spanned::new(
+        Spanned::new(
           ExpressionVariant::BoolLiteral(false),
           start,
           end,
-        )))
+        )
       }
       TokenVariant::KeywordIf => {
-        Ok(Left(Spanned::new(
+        let cond = self.parse_expr()?;
+        eat_token!(self, OpenBrace);
+        let then = self.parse_expr()?;
+        eat_token!(self, CloseBrace);
+        eat_token!(self, KeywordElse);
+        eat_token!(self, OpenBrace);
+        let els = self.parse_expr()?;
+        let end = eat_token!(self, CloseBrace).end;
+        Spanned::new(
           ExpressionVariant::IfElse {
             cond: Box::new(cond),
             then: Box::new(then),
@@ -290,10 +313,10 @@ impl<'src> Parser<'src> {
           },
           start,
           end
-        )))
+        )
       }
       TokenVariant::KeywordElse => {
-        unexpected_token!(
+        return unexpected_token!(
           TokenVariant::KeywordElse,
           Expr,
           start,
@@ -308,7 +331,47 @@ impl<'src> Parser<'src> {
           end,
         },
       ),
+    };
+
+    // NOTE(ubsan): should be while let
+    if let TokenVariant::OpenParen = **self.peek_token()? {
+      self.get_token()?;
+
+      let mut args = vec![];
+      let end;
+      loop {
+        match self.maybe_parse_expr()? {
+          Left(expr) => {
+            args.push(expr);
+            if let None = maybe_eat_token!(self, Comma) {
+              end = eat_token!(self, CloseParen).end;
+              break;
+            }
+          }
+          Right(tok) => {
+            if let TokenVariant::CloseParen = *tok {
+              self.get_token()?;
+              end = tok.end;
+              break;
+            } else {
+              return unexpected_token!(tok, Argument);
+            }
+          }
+        }
+      }
+
+      if let ExpressionVariant::Variable(callee) = expr.thing {
+        expr = Spanned::new(
+          ExpressionVariant::Call { callee, args },
+          expr.start,
+          end,
+        );
+      } else {
+        unimplemented!()
+      }
     }
+
+    Ok(Left(expr))
   }
 
   fn parse_single_expr(&mut self) -> ParserResult<Expression> {
@@ -365,52 +428,14 @@ impl<'src> Parser<'src> {
     };
 
     match self.peek_token()?.thing {
-      TokenVariant::OpenParen => {
-        // function call
-        self.get_token()?;
-
-        let mut args = vec![];
-        let end;
-        loop {
-          match self.maybe_parse_expr()? {
-            Left(expr) => {
-              args.push(expr);
-              if let None = maybe_eat_token!(self, Comma) {
-                end = eat_token!(self, CloseParen).end;
-                break;
-              }
-            }
-            Right(tok) => {
-              if let TokenVariant::CloseParen = *tok {
-                self.get_token()?;
-                end = tok.end;
-                break;
-              } else {
-                return unexpected_token!(
-                  tok.thing,
-                  Argument,
-                  tok.start,
-                  tok.end,
-                );
-              }
-            }
-          }
-        }
-
-        if let ExpressionVariant::Variable(callee) = lhs.thing {
-          Ok(Left(Spanned::new(
-            ExpressionVariant::Call { callee, args },
-            lhs.start,
-            end,
-          )))
-        } else {
-          unimplemented!()
-        }
-      }
       // NOTE(ubsan): should probably be a "is_binop" call
       TokenVariant::Plus => {
         self.get_token()?;
         self.parse_binop(lhs, BinOp::Plus).map(Left)
+      }
+      TokenVariant::LessEq => {
+        self.get_token()?;
+        self.parse_binop(lhs, BinOp::LessEq).map(Left)
       }
       _ => Ok(Left(lhs)),
     }

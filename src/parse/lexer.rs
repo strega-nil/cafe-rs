@@ -47,7 +47,7 @@ pub enum TokenVariant {
   //Star,
   //And,
 
-  //LessThanEquals,
+  LessEq,
 
   // Declaration/Types/Assignment
   Colon,
@@ -298,11 +298,7 @@ impl<'src> Lexer<'src> {
       '<' => match self.peekc() {
         Some(('=', end_loc)) => {
           self.getc();
-          Err(span!(
-            LexerErrorVariant::ReservedToken("<="),
-            loc,
-            end_loc,
-          ))
+          Ok(span!(TokenVariant::LessEq, loc, end_loc))
         }
         _ => Err(
           span!(LexerErrorVariant::ReservedToken("<"), loc, loc),

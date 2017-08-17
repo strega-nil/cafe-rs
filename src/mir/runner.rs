@@ -97,7 +97,6 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     ::std::ptr::copy(src, dst, dst_ty.0.size() as usize);
   }
 
-
   fn pop_state(&mut self) {
     let new_size = self.current_state().return_value;
     self.stack.resize(new_size, UNINITIALIZED);
@@ -134,18 +133,33 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     });
   }
 
+  unsafe fn read_value<T>(&mut self, src: mir::Reference) -> T {
+    use std::{mem, ptr};
+    let mut tmp = mem::zeroed();
+    let src = self.get_binding((Frame::Current, src));
+    assert!(mem::size_of::<T>() == src.1.size() as usize,
+      "attempted to read value of incorrect size: {} (size needed: {})",
+      (src.1).0, mem::size_of::<T>()
+    );
+    ptr::copy_nonoverlapping(
+      src.0,
+      (&mut tmp) as *mut _ as *mut u8,
+      mem::size_of::<T>(),
+    );
+    tmp
+  }
+
   pub fn run(&mut self, func: mir::FunctionDecl) -> i32 {
     self.push_state(func);
     self.call();
 
-    let mut tmp = [0u8; 4];
-    tmp.copy_from_slice(&self.stack[..4]);
+    let tmp = unsafe {
+      self.read_value::<i32>(mir::Reference::ret())
+    };
 
     self.pop_state();
 
-    unsafe {
-      ::std::mem::transmute::<[u8; 4], i32>(tmp)
-    }
+    tmp
   }
 
   fn call(&mut self) {
@@ -168,8 +182,11 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
           mir::Value::Reference(rhs) => {
             self.stmt_ref(lhs, rhs);
           }
-          mir::Value::Add(add_lhs, add_rhs) => {
-            self.stmt_add(lhs, add_lhs, add_rhs);
+          mir::Value::LessEq(op_lhs, op_rhs) => {
+            self.stmt_leq(lhs, op_lhs, op_rhs);
+          }
+          mir::Value::Add(op_lhs, op_rhs) => {
+            self.stmt_add(lhs, op_lhs, op_rhs);
           }
           mir::Value::Call {
             ref callee,
@@ -180,6 +197,18 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
         }
       }
       match self.current_state().func.blks[cur_blk].term {
+        mir::Terminator::IfElse { cond, then, els } => {
+          let cond = unsafe {
+            let tmp = self.read_value::<u8>(cond);
+            assert!(tmp == 0 || tmp == 1);
+            tmp != 0
+          };
+          if cond {
+            cur_blk = then.0 as usize;
+          } else {
+            cur_blk = els.0 as usize;
+          }
+        }
         mir::Terminator::Goto(blk) => {
           cur_blk = blk.0 as usize;
         }
@@ -270,6 +299,29 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
       ::std::mem::size_of::<T>(),
     );
     ret
+  }
+
+  fn stmt_leq(
+    &mut self,
+    dst: mir::Reference,
+    lhs: mir::Reference,
+    rhs: mir::Reference,
+  ) {
+    let lhs = self.get_binding((Frame::Current, lhs));
+    let rhs = self.get_binding((Frame::Current, rhs));
+    let bool = self.mir.get_builtin_type(
+      mir::BuiltinType::Bool,
+    );
+    unsafe {
+      let mut src = ::std::mem::transmute::<bool, [u8; 1]>(
+        Self::get_value::<i32>(lhs)
+        <= Self::get_value::<i32>(rhs)
+      );
+      self.write(
+        (Frame::Current, dst),
+        (src.as_mut_ptr(), bool),
+      );
+    }
   }
 
   fn stmt_add(

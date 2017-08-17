@@ -9,6 +9,7 @@
 - side-effecting functions (`log`)
 
 - blocks
+- else if
 
 - unary operators (-, +)
 - checking to see if a number is in range
