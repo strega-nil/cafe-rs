@@ -46,7 +46,6 @@ pub enum TokenVariant {
   //Minus,
   //Star,
   //And,
-
   LessEq,
 
   // Declaration/Types/Assignment
@@ -261,13 +260,9 @@ impl<'src> Lexer<'src> {
             end_loc,
           ))
         }
-        _ => {
-          Err(span!(
-            LexerErrorVariant::ReservedToken("-"),
-            loc,
-            loc,
-          ))
-        }
+        _ => Err(
+          span!(LexerErrorVariant::ReservedToken("-"), loc, loc),
+        ),
       },
       '*' => match self.peekc() {
         Some(('=', end_loc)) => Err(span!(

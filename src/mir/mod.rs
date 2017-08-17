@@ -78,9 +78,7 @@ impl Display for BuiltinType {
       BuiltinType::SInt(size) => {
         write!(f, "s{}", size.size_bits())
       }
-      BuiltinType::Bool => {
-        write!(f, "bool")
-      }
+      BuiltinType::Bool => write!(f, "bool"),
     }
   }
 }
@@ -376,13 +374,11 @@ impl<'ctx> FunctionBuilder<'ctx> {
       self.blks.push(BlockData::new());
       self.blks.push(BlockData::new());
       self.blks.push(BlockData::with_term(term));
-      let final_bb = Block((self.blks.len() - 1) as u32);
-
       let len = self.blks.len();
-      self.blks[len - 3].term =
-        Terminator::Goto(final_bb);
-      self.blks[len - 2].term =
-        Terminator::Goto(final_bb);
+
+      let final_bb = Block((len - 1) as u32);
+      self.blks[len - 3].term = Terminator::Goto(final_bb);
+      self.blks[len - 2].term = Terminator::Goto(final_bb);
 
       (
         Block((len - 3) as u32),
@@ -391,11 +387,8 @@ impl<'ctx> FunctionBuilder<'ctx> {
       )
     };
 
-    self.blks[blk.0 as usize].term = Terminator::IfElse {
-      cond,
-      then,
-      els,
-    };
+    self.blks[blk.0 as usize].term =
+      Terminator::IfElse { cond, then, els };
     (then, els, final_bb)
   }
 
@@ -556,12 +549,10 @@ impl<'ctx> Mir<'ctx> {
     };
     match self.types.get(name) {
       Some(t) => Type(t),
-      None => {
-        panic!(
-          "the ast implementor forgot to add `{}` to mir types",
-          name,
-        )
-      }
+      None => panic!(
+        "the ast implementor forgot to add `{}` to mir types",
+        name,
+      ),
     }
   }
 }
@@ -696,7 +687,8 @@ impl<'ctx> Mir<'ctx> {
           Terminator::IfElse { cond, then, els } => {
             print!("    if ");
             print_binding(&value.bindings, cond);
-            println!(" {{ bb{} }} else {{ bb{} }}",
+            println!(
+              " {{ bb{} }} else {{ bb{} }}",
               then.0,
               els.0,
             );

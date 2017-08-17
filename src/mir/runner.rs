@@ -49,35 +49,31 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     let base = self.stack.as_mut_ptr();
     let len = self.stack.len(); // for assertions
     let frame = match frame {
-      Frame::Current => {
-        self.current_state()
-      }
+      Frame::Current => self.current_state(),
       Frame::Previous => {
         self.call_stack[self.call_stack.len() - 2]
       }
     };
     let offset = |off: usize| {
       assert!(off < len, "tried to index out of bounds");
-      unsafe {
-        base.offset(off as isize)
-      }
+      unsafe { base.offset(off as isize) }
     };
     match frame.func.bindings[ref_.0 as usize].kind {
       mir::BindingKind::Return => {
         let off = offset(frame.return_value);
         (off, frame.func.ret_ty)
-      },
+      }
       mir::BindingKind::Param(i) => {
         let off = offset(
-          frame.params_start
-          + frame.func.params.offset_of(i) as usize
+          frame.params_start +
+            frame.func.params.offset_of(i) as usize,
         );
         (off, frame.func.params.get(i))
       }
       mir::BindingKind::Local(i) => {
         let off = offset(
-          frame.locals_start
-          + frame.func.locals.offset_of(i) as usize
+          frame.locals_start +
+            frame.func.locals.offset_of(i) as usize,
         );
         (off, frame.func.locals.get(i))
       }
@@ -92,7 +88,9 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     let (dst, dst_ty) = self.get_binding(dst);
     assert!(
       dst_ty.0 as *const _ == src_ty.0 as *const _,
-      "dst: {}, src: {}", dst_ty.0, src_ty.0,
+      "dst: {}, src: {}",
+      dst_ty.0,
+      src_ty.0,
     );
     ::std::ptr::copy(src, dst, dst_ty.0.size() as usize);
   }
@@ -137,9 +135,11 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     use std::{mem, ptr};
     let mut tmp = mem::zeroed();
     let src = self.get_binding((Frame::Current, src));
-    assert!(mem::size_of::<T>() == src.1.size() as usize,
+    assert!(
+      mem::size_of::<T>() == src.1.size() as usize,
       "attempted to read value of incorrect size: {} (size needed: {})",
-      (src.1).0, mem::size_of::<T>()
+      (src.1).0,
+      mem::size_of::<T>(),
     );
     ptr::copy_nonoverlapping(
       src.0,
@@ -153,9 +153,8 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     self.push_state(func);
     self.call();
 
-    let tmp = unsafe {
-      self.read_value::<i32>(mir::Reference::ret())
-    };
+    let tmp =
+      unsafe { self.read_value::<i32>(mir::Reference::ret()) };
 
     self.pop_state();
 
@@ -248,9 +247,8 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     }
     self.call();
 
-    let src = self.get_binding(
-      (Frame::Current, mir::Reference::ret()),
-    );
+    let src =
+      self.get_binding((Frame::Current, mir::Reference::ret()));
     unsafe {
       self.write((Frame::Previous, dst), src);
     }
@@ -270,9 +268,9 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
       mir::Literal::Int(i) => {
         let arr = unsafe { transmute::<i32, [u8; 4]>(i) };
         backing[..4].copy_from_slice(&arr);
-        self.mir.get_builtin_type(
-          BuiltinType::SInt(IntSize::I32),
-        )
+        self
+          .mir
+          .get_builtin_type(BuiltinType::SInt(IntSize::I32))
       }
       mir::Literal::Bool(b) => {
         backing[0] = b as u8;
@@ -288,10 +286,7 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
   }
 
   unsafe fn get_value<T>(src: (*mut u8, mir::Type)) -> T {
-    assert!(
-      src.1.size() as usize
-      == ::std::mem::size_of::<T>()
-    );
+    assert!(src.1.size() as usize == ::std::mem::size_of::<T>());
     let mut ret = ::std::mem::uninitialized();
     ::std::ptr::copy(
       src.0,
@@ -309,18 +304,14 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
   ) {
     let lhs = self.get_binding((Frame::Current, lhs));
     let rhs = self.get_binding((Frame::Current, rhs));
-    let bool = self.mir.get_builtin_type(
-      mir::BuiltinType::Bool,
-    );
+    let bool = self.mir.get_builtin_type(mir::BuiltinType::Bool);
     unsafe {
       let mut src = ::std::mem::transmute::<bool, [u8; 1]>(
-        Self::get_value::<i32>(lhs)
-        <= Self::get_value::<i32>(rhs)
+        Self::get_value::<i32>(lhs) <=
+          Self::get_value::<i32>(rhs),
       );
-      self.write(
-        (Frame::Current, dst),
-        (src.as_mut_ptr(), bool),
-      );
+      self
+        .write((Frame::Current, dst), (src.as_mut_ptr(), bool));
     }
   }
 
@@ -334,12 +325,11 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     let rhs = self.get_binding((Frame::Current, rhs));
     unsafe {
       let mut src = ::std::mem::transmute::<i32, [u8; 4]>(
-        Self::get_value::<i32>(lhs) + Self::get_value::<i32>(rhs)
+        Self::get_value::<i32>(lhs) +
+          Self::get_value::<i32>(rhs),
       );
-      self.write(
-        (Frame::Current, dst),
-        (src.as_mut_ptr(), lhs.1),
-      );
+      self
+        .write((Frame::Current, dst), (src.as_mut_ptr(), lhs.1));
     }
   }
 }

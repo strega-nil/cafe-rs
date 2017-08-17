@@ -71,27 +71,17 @@ impl ExpressionVariant {
     match *self {
       ExpressionVariant::Nullary => {
         panic!("nil type is unimplemented")
-      },
-      ExpressionVariant::IntLiteral(_) => {
-        mir.get_builtin_type(
-          mir::BuiltinType::SInt(mir::IntSize::I32)
-        )
-      },
+      }
+      ExpressionVariant::IntLiteral(_) => mir.get_builtin_type(
+        mir::BuiltinType::SInt(mir::IntSize::I32),
+      ),
       ExpressionVariant::BoolLiteral(_) => {
         mir.get_builtin_type(mir::BuiltinType::Bool)
-      },
-      ExpressionVariant::Variable(_) => {
-        unimplemented!()
-      },
-      ExpressionVariant::IfElse { .. } => {
-        unimplemented!()
-      },
-      ExpressionVariant::BinOp { .. } => {
-        unimplemented!()
-      },
-      ExpressionVariant::Call { .. } => {
-        unimplemented!()
-      },
+      }
+      ExpressionVariant::Variable(_) => unimplemented!(),
+      ExpressionVariant::IfElse { .. } => unimplemented!(),
+      ExpressionVariant::BinOp { .. } => unimplemented!(),
+      ExpressionVariant::Call { .. } => unimplemented!(),
     }
   }
 
@@ -116,30 +106,20 @@ impl ExpressionVariant {
     locals: &HashMap<String, mir::Reference>,
   ) -> mir::Block {
     let s32 = mir.get_builtin_type(
-      mir::BuiltinType::SInt(mir::IntSize::I32)
+      mir::BuiltinType::SInt(mir::IntSize::I32),
     );
-    let bool = mir.get_builtin_type(
-      mir::BuiltinType::Bool
-    );
+    let bool = mir.get_builtin_type(mir::BuiltinType::Bool);
     match *self {
-      ExpressionVariant::IntLiteral(i) => {
-        builder.add_stmt(
-          block,
-          dst,
-          mir::Value::int_lit(i as i32),
-        )
-      }
+      ExpressionVariant::IntLiteral(i) => builder
+        .add_stmt(block, dst, mir::Value::int_lit(i as i32)),
       ExpressionVariant::BoolLiteral(b) => {
         builder.add_stmt(block, dst, mir::Value::bool_lit(b))
       }
       ExpressionVariant::Variable(ref name) => {
         // will panic for now - should be caught in typeck
         if let Some(&loc) = locals.get(name) {
-          builder.add_stmt(
-            block,
-            dst,
-            mir::Value::Reference(loc),
-          );
+          builder
+            .add_stmt(block, dst, mir::Value::Reference(loc));
         } else {
           panic!("no `{}` name found", name);
         }
@@ -175,11 +155,8 @@ impl ExpressionVariant {
           rhs.to_mir(var, mir, builder, block, funcs, locals);
           var
         };
-        builder.add_stmt(
-          block,
-          dst,
-          Self::mir_binop(*op, lhs, rhs),
-        );
+        builder
+          .add_stmt(block, dst, Self::mir_binop(*op, lhs, rhs));
       }
       ExpressionVariant::Call {
         ref callee,
@@ -197,7 +174,7 @@ impl ExpressionVariant {
           builder.add_stmt(
             block,
             dst,
-            mir::Value::Call { callee, args }
+            mir::Value::Call { callee, args },
           )
         } else {
           panic!("function `{}` doesn't exist", callee);
@@ -266,9 +243,7 @@ impl Function {
     for stmt in &self.blk.statements {
       match **stmt {
         StatementVariant::Expr(ref e) => {
-          let tmp = builder.add_anonymous_local(
-            e.ty(mir)
-          );
+          let tmp = builder.add_anonymous_local(e.ty(mir));
           e.to_mir(
             tmp,
             mir,
@@ -446,18 +421,17 @@ impl Display for ExpressionVariant {
         ref cond,
         ref then,
         ref els,
-      } => {
-        write!(f,
-r"if {} {{
+      } => write!(
+        f,
+        r"if {} {{
     {}
   }} else {{
     {}
   }}",
-          cond.thing,
-          then.thing,
-          els.thing,
-        )
-      }
+        cond.thing,
+        then.thing,
+        els.thing,
+      ),
       ExpressionVariant::Call {
         ref callee,
         ref args,

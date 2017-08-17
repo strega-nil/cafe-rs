@@ -272,30 +272,24 @@ impl<'src> Parser<'src> {
     let Spanned { thing, start, end } = self.get_token()?;
 
     let mut expr = match thing {
-      TokenVariant::Integer(u) => {
-        Spanned::new(
-          ExpressionVariant::IntLiteral(u),
-          start,
-          end,
-        )
-      }
+      TokenVariant::Integer(u) => Spanned::new(
+        ExpressionVariant::IntLiteral(u),
+        start,
+        end,
+      ),
       TokenVariant::Ident(s) => {
         Spanned::new(ExpressionVariant::Variable(s), start, end)
       }
-      TokenVariant::KeywordTrue => {
-        Spanned::new(
-          ExpressionVariant::BoolLiteral(true),
-          start,
-          end,
-        )
-      }
-      TokenVariant::KeywordFalse => {
-        Spanned::new(
-          ExpressionVariant::BoolLiteral(false),
-          start,
-          end,
-        )
-      }
+      TokenVariant::KeywordTrue => Spanned::new(
+        ExpressionVariant::BoolLiteral(true),
+        start,
+        end,
+      ),
+      TokenVariant::KeywordFalse => Spanned::new(
+        ExpressionVariant::BoolLiteral(false),
+        start,
+        end,
+      ),
       TokenVariant::KeywordIf => {
         let cond = self.parse_expr()?;
         eat_token!(self, OpenBrace);
@@ -312,7 +306,7 @@ impl<'src> Parser<'src> {
             els: Box::new(els),
           },
           start,
-          end
+          end,
         )
       }
       TokenVariant::KeywordElse => {
@@ -348,15 +342,13 @@ impl<'src> Parser<'src> {
               break;
             }
           }
-          Right(tok) => {
-            if let TokenVariant::CloseParen = *tok {
-              self.get_token()?;
-              end = tok.end;
-              break;
-            } else {
-              return unexpected_token!(tok, Argument);
-            }
-          }
+          Right(tok) => if let TokenVariant::CloseParen = *tok {
+            self.get_token()?;
+            end = tok.end;
+            break;
+          } else {
+            return unexpected_token!(tok, Argument);
+          },
         }
       }
 
@@ -471,10 +463,17 @@ impl<'src> Parser<'src> {
     if let TokenVariant::KeywordLet = **self.peek_token()? {
       let start = self.get_token()?.start;
       let name = match self.get_token()? {
-        Token { thing: TokenVariant::Ident(name), ..  } => name,
+        Token {
+          thing: TokenVariant::Ident(name),
+          ..
+        } => name,
         t => {
-          return
-            unexpected_token!(t.thing, Ident, t.start, t.end);
+          return unexpected_token!(
+            t.thing,
+            Ident,
+            t.start,
+            t.end
+          );
         }
       };
       eat_token!(self, Colon);
@@ -501,11 +500,9 @@ impl<'src> Parser<'src> {
 
     let end = eat_token!(self, Semicolon).end;
     let start = expr.start;
-    Ok(Right(Spanned::new(
-      StatementVariant::Expr(expr),
-      start,
-      end,
-    )))
+    Ok(Right(
+      Spanned::new(StatementVariant::Expr(expr), start, end),
+    ))
   }
 
   fn parse_param_list(
