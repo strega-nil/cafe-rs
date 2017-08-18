@@ -1,5 +1,3 @@
-- add more tests
-
 - typechecking!
 
 - add ()

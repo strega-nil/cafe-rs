@@ -131,7 +131,7 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     });
   }
 
-  unsafe fn read_value<T>(&mut self, src: mir::Reference) -> T {
+  unsafe fn read_value<T: Copy>(&mut self, src: mir::Reference) -> T {
     use std::{mem, ptr};
     let mut tmp = mem::zeroed();
     let src = self.get_binding((Frame::Current, src));
