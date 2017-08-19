@@ -30,16 +30,15 @@ token =
   | operator
 
 keyword =
-  | `proc`
+  | `func`
   | `let`
   | `if`
   | `else`
-  # | `data`
+  | `true`
+  | `false`
+  # | `struct`
+  # | `variant`
   # | `type`
-  # | `if`
-  # | `else`
-  # | `true`
-  # | `false`
   # | `raw`
   # | `mut`
   # | `own`
@@ -77,7 +76,7 @@ binop =
   # | `&&` | `||`
 
 operator =
-  | `:` | `,` | `=` | binop
+  | `:` | `->` | `,` | `=` | binop
   # `=>`
 
 separator =
