@@ -327,7 +327,8 @@ impl<'src> Parser<'src> {
       ),
     };
 
-    // NOTE(ubsan): should be while let
+    // NOTE(ubsan): should be while let, for multiple function
+    // calls in a row
     if let TokenVariant::OpenParen = **self.peek_token()? {
       self.get_token()?;
 
@@ -564,9 +565,10 @@ impl<'src> Parser<'src> {
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
       TokenVariant::Ident(name) => {
+        eat_token!(self, Colon);
         let params = self.parse_param_list()?;
         let ret_ty = {
-          if let Some(_) = maybe_eat_token!(self, Colon) {
+          if let Some(_) = maybe_eat_token!(self, SkinnyArrow) {
             self.parse_type()?
           } else {
             StringlyType::Unit

@@ -1,13 +1,16 @@
 func main: () -> s32 {
-  fib(10)
+  fib(15)
+}
+
+func should_recurse: (n: s32) -> bool {
+  2 <= n
 }
 
 func fib: (n: s32) -> s32 {
   let neg_one: s32 = 4294967295;
-  if n <= 1 {
-    n
-  } else {
+  if should_recurse(n) {
     fib(n + neg_one) + fib(n + neg_one + neg_one)
+  } else {
+    n
   }
 }
-
