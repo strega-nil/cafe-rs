@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 
-use mir::{self, Mir};
+use mir::{self, Mir, TypeError};
 use parse::{ItemVariant, Parser, ParserError,
             ParserErrorVariant, Spanned};
 #[derive(Clone, Debug)]
@@ -104,22 +104,39 @@ impl ExpressionVariant {
     block: mir::Block,
     funcs: &HashMap<String, mir::FunctionDecl>,
     locals: &HashMap<String, mir::Reference>,
-  ) -> mir::Block {
+  ) -> Result<mir::Block, TypeError<'ctx>> {
     let s32 = mir.get_builtin_type(
       mir::BuiltinType::SInt(mir::IntSize::I32),
     );
     let bool = mir.get_builtin_type(mir::BuiltinType::Bool);
     match *self {
-      ExpressionVariant::IntLiteral(i) => builder
-        .add_stmt(block, dst, mir::Value::int_lit(i as i32)),
+      ExpressionVariant::IntLiteral(i) => {
+        builder.add_stmt(
+          mir,
+          block,
+          dst,
+          mir::Value::int_lit(i as i32),
+        )?
+      }
       ExpressionVariant::BoolLiteral(b) => {
-        builder.add_stmt(block, dst, mir::Value::bool_lit(b))
+        builder.add_stmt(
+          mir,
+          block,
+          dst,
+          mir::Value::bool_lit(b),
+        )?
       }
       ExpressionVariant::Variable(ref name) => {
-        // will panic for now - should be caught in typeck
+        // NOTE(ubsan): typeck is currently in the mir pass
+        // once we put it into a HIR or AST pass, it will catch
+        // this
         if let Some(&loc) = locals.get(name) {
-          builder
-            .add_stmt(block, dst, mir::Value::Reference(loc));
+          builder.add_stmt(
+            mir,
+            block,
+            dst,
+            mir::Value::Reference(loc),
+          )?;
         } else {
           panic!("no `{}` name found", name);
         }
@@ -131,14 +148,14 @@ impl ExpressionVariant {
       } => {
         let cond = {
           let var = builder.add_anonymous_local(bool);
-          cond.to_mir(var, mir, builder, block, funcs, locals);
+          cond.to_mir(var, mir, builder, block, funcs, locals)?;
           var
         };
         let (then_bb, els_bb, final_bb) =
           builder.term_if_else(block, cond);
-        then.to_mir(dst, mir, builder, then_bb, funcs, locals);
-        els.to_mir(dst, mir, builder, els_bb, funcs, locals);
-        return final_bb;
+        then.to_mir(dst, mir, builder, then_bb, funcs, locals)?;
+        els.to_mir(dst, mir, builder, els_bb, funcs, locals)?;
+        return Ok(final_bb);
       }
       ExpressionVariant::BinOp {
         ref lhs,
@@ -147,35 +164,40 @@ impl ExpressionVariant {
       } => {
         let lhs = {
           let var = builder.add_anonymous_local(s32);
-          lhs.to_mir(var, mir, builder, block, funcs, locals);
+          lhs.to_mir(var, mir, builder, block, funcs, locals)?;
           var
         };
         let rhs = {
           let var = builder.add_anonymous_local(s32);
-          rhs.to_mir(var, mir, builder, block, funcs, locals);
+          rhs.to_mir(var, mir, builder, block, funcs, locals)?;
           var
         };
-        builder
-          .add_stmt(block, dst, Self::mir_binop(*op, lhs, rhs));
+        builder.add_stmt(
+          mir,
+          block,
+          dst,
+          Self::mir_binop(*op, lhs, rhs),
+        )?;
       }
       ExpressionVariant::Call {
         ref callee,
         ref args,
       } => {
-        let args: Vec<_> = args
+        let args = args
           .iter()
           .map(|v| {
             let var = builder.add_anonymous_local(s32);
-            v.to_mir(var, mir, builder, block, funcs, locals);
-            var
+            v.to_mir(var, mir, builder, block, funcs, locals)?;
+            Ok(var)
           })
-          .collect();
+          .collect::<Result<_, _>>()?;
         if let Some(&callee) = funcs.get(callee) {
           builder.add_stmt(
+            mir,
             block,
             dst,
             mir::Value::Call { callee, args },
-          )
+          )?
         } else {
           panic!("function `{}` doesn't exist", callee);
         }
@@ -185,7 +207,7 @@ impl ExpressionVariant {
       }
     }
 
-    block
+    Ok(block)
   }
 }
 pub type Expression = Spanned<ExpressionVariant>;
@@ -222,16 +244,9 @@ impl Function {
     decl: mir::FunctionDecl,
     funcs: &HashMap<String, mir::FunctionDecl>,
     mir: &mut Mir<'ctx>,
-  ) {
-    let mir_params = self
-      .params
-      .iter()
-      .map(|&(_, ref ty)| mir.get_type(ty).unwrap())
-      .collect();
-
-    let ret_ty = mir.get_type(&self.ret_ty).unwrap();
+  ) -> Result<(), TypeError<'ctx>> {
     let mut builder =
-      mir.get_function_builder(decl, mir_params, ret_ty);
+      mir.get_function_builder(decl);
 
     let mut locals = HashMap::new();
     for (i, param) in self.params.iter().enumerate() {
@@ -251,7 +266,7 @@ impl Function {
             block,
             funcs,
             &locals,
-          );
+          )?;
         }
         StatementVariant::Local {
           ref name,
@@ -267,7 +282,7 @@ impl Function {
             block,
             funcs,
             &locals,
-          );
+          )?;
           locals.insert(name.clone(), var);
         }
       };
@@ -276,8 +291,8 @@ impl Function {
     self
       .blk
       .expr
-      .to_mir(ret, mir, &mut builder, block, funcs, &locals);
-    mir.add_function_definition(builder)
+      .to_mir(ret, mir, &mut builder, block, funcs, &locals)?;
+    Ok(mir.add_function_definition(builder))
   }
 }
 
@@ -349,18 +364,39 @@ impl Ast {
 }
 
 impl Ast {
-  pub fn build_mir<'ctx>(&mut self, mir: &mut Mir<'ctx>) {
+  pub fn build_mir<'ctx>(
+    &mut self,
+    mir: &mut Mir<'ctx>,
+  ) -> Result<(), TypeError<'ctx>> {
     Self::prelude_types(mir);
     let mut mir_funcs: HashMap<String, mir::FunctionDecl> =
       HashMap::new();
-    for (name, _) in &self.funcs {
-      let decl = mir.add_function_decl(Some(name.to_owned()));
+
+    for (name, func) in &self.funcs {
+      let params = {
+        let tmp = func
+          .params
+          .iter()
+          .map(|&(_, ref ty)| mir.get_type(ty).unwrap())
+          .collect();
+        mir::TypeList::from_existing(tmp)
+      };
+      let ret = mir.get_type(&func.ret_ty).unwrap();
+
+      let decl = mir.add_function_decl(
+        Some(name.to_owned()),
+        mir::FunctionType {
+          ret,
+          params,
+        },
+      );
       mir_funcs.insert(name.to_owned(), decl);
     }
     for (name, func) in &self.funcs {
       let decl = mir_funcs[name];
-      func.build_mir(decl, &mir_funcs, mir);
+      func.build_mir(decl, &mir_funcs, mir)?;
     }
+    Ok(())
   }
 
   fn prelude_types(mir: &Mir) {

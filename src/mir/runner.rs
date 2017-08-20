@@ -6,6 +6,7 @@ const UNINITIALIZED: u8 = 0x42;
 #[derive(Copy, Clone, Debug)]
 struct FunctionState<'mir, 'ctx: 'mir> {
   func: &'mir mir::FunctionValue<'ctx>,
+  func_ty: &'mir mir::FunctionType<'ctx>,
   // indices into the stack
   // NOTE(ubsan): more information is held than actually
   // necessary
@@ -61,14 +62,14 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     match frame.func.bindings[ref_.0 as usize].kind {
       mir::BindingKind::Return => {
         let off = offset(frame.return_value);
-        (off, frame.func.ret_ty)
+        (off, frame.func_ty.ret)
       }
       mir::BindingKind::Param(i) => {
         let off = offset(
           frame.params_start +
-            frame.func.params.offset_of(i) as usize,
+            frame.func_ty.params.offset_of(i) as usize,
         );
-        (off, frame.func.params.get(i))
+        (off, frame.func_ty.params.get(i))
       }
       mir::BindingKind::Local(i) => {
         let off = offset(
@@ -104,27 +105,33 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
   // after this call, the stack will be set up for the call,
   // but without arguments
   fn push_state(&mut self, func: mir::FunctionDecl) {
-    let func = match self.mir.funcs[func.0].1 {
-      Some(ref f) => f,
-      None => {
-        panic!(
-          "Function never defined: {:?} ({:?})",
-          self.mir.funcs[func.0].0,
-          func,
-        );
-      }
+    let (func_ty, func) = {
+      let tmp = &self.mir.funcs[func.0];
+      let ty = &tmp.ty;
+      let func = match tmp.value {
+        Some(ref f) => f,
+        None => {
+          panic!(
+            "Function never defined: {:?} ({:?})",
+            self.mir.funcs[func.0].name,
+            func,
+          );
+        }
+      };
+      (ty, func)
     };
     let return_value =
-      align(self.stack.len(), func.ret_ty.align() as usize);
-    let return_end = return_value + func.ret_ty.size() as usize;
+      align(self.stack.len(), func_ty.ret.align() as usize);
+    let return_end = return_value + func_ty.ret.size() as usize;
     let params_start = align(return_end, 16);
     let locals_start =
-      params_start + func.params.size() as usize;
+      params_start + func_ty.params.size() as usize;
 
     self.stack.resize(locals_start, UNINITIALIZED);
 
     self.call_stack.push(FunctionState {
       func,
+      func_ty,
       return_value,
       params_start,
       locals_start,

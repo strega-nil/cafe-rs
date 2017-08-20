@@ -8,3 +8,22 @@
   - http://209.68.42.137/ucsd-pages/Courses/cse227.w03/handouts/cyclone-regions.pdf
   - https://www.microsoft.com/en-us/research/publication/uniqueness-and-reference-immutability-for-safe-parallelism
   - http://web.cs.ucla.edu/~palsberg/tba/papers/tofte-talpin-iandc97.pdf
+
+- syntax:
+  ```
+  func id: (n: s32) -> s32 {
+    n
+  }
+
+  variant optional: (t: type) -> type {
+    some: t,
+    none,
+  }
+
+  struct point2: (t: type) -> type {
+    x: t,
+    y: t,
+  }
+
+  func array: (t: type, n: usize) -> type = [n]t;
+  ```

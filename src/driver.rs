@@ -23,9 +23,8 @@ fn main() {
     .version("0.1.0")
     .author("Nicole Mazzuca <npmazzuca@gmail.com>")
     .about(
-      "\
-       A compiler for the café language.\n\
-       Written in Rust.",
+      "A compiler for the café language.\n\
+      Written in Rust.",
     )
     .arg(Arg::with_name("input").required(true))
     .arg(
@@ -43,12 +42,19 @@ fn main() {
         .long("no-output")
         .help("do not print the output of the run"),
     )
+    .arg(
+      Arg::with_name("no-run")
+        .long("no-run")
+        .help("do not actually run the resulting mir")
+        .conflicts_with("no-output"),
+    )
     .get_matches();
 
   let name = matches.value_of("input").unwrap();
   let print_ast = matches.is_present("print-ast");
   let print_mir = matches.is_present("print-mir");
   let print_run = !matches.is_present("no-output");
+  let do_run = !matches.is_present("no-run");
 
   let mut file = Vec::new();
   File::open(&name)
@@ -63,15 +69,18 @@ fn main() {
     println!("{}", ast);
   }
   let ctxt = mir::MirCtxt::new();
-  let mir = Mir::new(&ctxt, ast);
+  let mir = Mir::new(&ctxt, ast).unwrap();
   if print_mir {
     println!("    ===   MIR   ===    ");
     mir.print();
   }
-  if print_run {
-    println!("    ===   RUN   ===    ");
-    println!("{}", mir.run());
-  } else {
-    mir.run();
+
+  if do_run {
+    if print_run {
+      println!("    ===   RUN   ===    ");
+      println!("{}", mir.run());
+    } else {
+      mir.run();
+    }
   }
 }
