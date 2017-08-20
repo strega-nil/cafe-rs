@@ -1,6 +1,10 @@
 // TODO(ubsan): make sure to start dealing with Spanneds
 // whee errors are fun
 // TODO(ubsan): impl Display for Literal
+// TODO(ubsan): typeck should *probably* be done in AST
+// the current typeck is pretty hax
+// TODO(ubsan): figure out a good way to give params names
+// without lots of allocations
 
 mod runner;
 
@@ -142,6 +146,19 @@ pub enum Literal {
   Bool(bool),
 }
 
+impl Literal {
+  fn ty<'ctx>(&self, mir: &Mir<'ctx>) -> Type<'ctx> {
+    match *self {
+      Literal::Int(_) => {
+        mir.get_builtin_type(BuiltinType::SInt(IntSize::I32))
+      }
+      Literal::Bool(_) => {
+        mir.get_builtin_type(BuiltinType::Bool)
+      }
+    }
+  }
+}
+
 #[derive(Debug)]
 pub enum Value {
   Literal(Literal),
@@ -160,6 +177,60 @@ impl Value {
   }
   pub fn bool_lit(b: bool) -> Self {
     Value::Literal(Literal::Bool(b))
+  }
+
+  pub fn ty<'ctx>(
+    &self,
+    builder: &FunctionBuilder<'ctx>,
+    mir: &Mir<'ctx>,
+  ) -> Result<Type<'ctx>, TypeError<'ctx>> {
+    match *self {
+      Value::Literal(ref lit) => Ok(lit.ty(mir)),
+      Value::Reference(ref_) => {
+        Ok(builder.bindings[ref_.0 as usize].ty)
+      }
+      Value::Add(rhs, lhs) => {
+        let ty_lhs = builder.bindings[lhs.0 as usize].ty;
+        let ty_rhs = builder.bindings[rhs.0 as usize].ty;
+        if ty_rhs != ty_lhs {
+          Err(TypeErrorVariant::Mismatched { lhs: ty_lhs, rhs: ty_rhs })
+        } else {
+          Ok(ty_lhs)
+        }
+      }
+      Value::LessEq(rhs, lhs) => {
+        let ty_lhs = builder.bindings[lhs.0 as usize].ty;
+        let ty_rhs = builder.bindings[rhs.0 as usize].ty;
+        if ty_rhs != ty_lhs {
+          Err(TypeErrorVariant::Mismatched { lhs: ty_lhs, rhs: ty_rhs })
+        } else {
+          Ok(mir.get_builtin_type(BuiltinType::Bool))
+        }
+      }
+      Value::Call { callee: ref decl, ref args } => {
+        let callee = &mir.funcs[decl.0];
+        let params = &callee.ty.params;
+        if args.len() != params.tys.len() {
+          return Err(TypeErrorVariant::NumberOfArgs {
+            decl: *decl,
+            args_expected: callee.ty.params.tys.len() as u32,
+            args_found: args.len() as u32,
+          })
+        }
+
+        for (arg, parm) in args.iter().zip(params.tys.iter()) {
+          let arg_ty = builder.bindings[arg.0 as usize].ty;
+          if arg_ty != *parm {
+            return Err(TypeErrorVariant::Mismatched {
+              lhs: *parm,
+              rhs: arg_ty,
+            })
+          }
+        }
+
+        Ok(callee.ty.ret)
+      }
+    }
   }
 }
 
@@ -203,6 +274,21 @@ struct BlockData {
   term: Terminator,
 }
 
+#[derive(Debug)]
+pub enum TypeErrorVariant<'ctx> {
+  Mismatched {
+    lhs: Type<'ctx>,
+    rhs: Type<'ctx>,
+  },
+  NumberOfArgs {
+    decl: FunctionDecl,
+    args_expected: u32,
+    args_found: u32,
+  },
+}
+// TODO(ubsan): should be spanned
+pub type TypeError<'ctx> = TypeErrorVariant<'ctx>;
+
 impl BlockData {
   fn new() -> Self {
     BlockData {
@@ -220,20 +306,20 @@ impl BlockData {
 }
 
 #[derive(Debug)]
-struct TypeList<'ctx> {
+pub struct TypeList<'ctx> {
   tys: Vec<Type<'ctx>>,
 }
 
 impl<'ctx> TypeList<'ctx> {
-  fn new() -> Self {
+  pub fn new() -> Self {
     TypeList { tys: vec![] }
   }
 
-  fn push(&mut self, ty: Type<'ctx>) {
+  pub fn push(&mut self, ty: Type<'ctx>) {
     self.tys.push(ty);
   }
 
-  fn from_existing(tys: Vec<Type<'ctx>>) -> Self {
+  pub fn from_existing(tys: Vec<Type<'ctx>>) -> Self {
     TypeList { tys }
   }
 
@@ -283,8 +369,6 @@ impl<'a, 'ctx> IntoIterator for &'a TypeList<'ctx> {
 
 #[derive(Debug)]
 struct FunctionValue<'ctx> {
-  ret_ty: Type<'ctx>,
-  params: TypeList<'ctx>,
   locals: TypeList<'ctx>,
   blks: Vec<BlockData>,
   bindings: Vec<Binding<'ctx>>,
@@ -293,8 +377,6 @@ struct FunctionValue<'ctx> {
 #[derive(Debug)]
 pub struct FunctionBuilder<'ctx> {
   decl: FunctionDecl,
-  ret_ty: Type<'ctx>,
-  params: TypeList<'ctx>,
   locals: TypeList<'ctx>,
   blks: Vec<BlockData>,
   bindings: Vec<Binding<'ctx>>,
@@ -302,13 +384,7 @@ pub struct FunctionBuilder<'ctx> {
 
 // creation and misc
 impl<'ctx> FunctionBuilder<'ctx> {
-  fn new(
-    decl: FunctionDecl,
-    // TODO(ubsan): figure out a good way to give params names
-    // without lots of allocations
-    params: TypeList<'ctx>,
-    ret_ty: Type<'ctx>,
-  ) -> Self {
+  fn new(decl: FunctionDecl, mir: &Mir<'ctx>) -> Self {
     let enter_block = BlockData {
       stmts: vec![],
       term: Terminator::Goto(Block(1)),
@@ -318,13 +394,17 @@ impl<'ctx> FunctionBuilder<'ctx> {
       term: Terminator::Return,
     };
 
-    let mut bindings = Vec::with_capacity(params.tys.len() + 1);
+    let mut bindings = Vec::with_capacity(
+      mir.funcs[decl.0].ty.params.tys.len() + 1,
+    );
     bindings.push(Binding {
       name: Some("<return>".to_owned()),
-      ty: ret_ty,
+      ty: mir.funcs[decl.0].ty.ret,
       kind: BindingKind::Return,
     });
-    for (i, ty) in params.iter().enumerate() {
+    for (i, ty)
+      in mir.funcs[decl.0].ty.params.iter().enumerate()
+    {
       bindings.push(Binding {
         name: None,
         ty,
@@ -333,8 +413,6 @@ impl<'ctx> FunctionBuilder<'ctx> {
     }
     FunctionBuilder {
       decl,
-      params,
-      ret_ty,
       locals: TypeList::new(),
       bindings,
       blks: vec![enter_block, exit_block],
@@ -354,12 +432,24 @@ impl<'ctx> FunctionBuilder<'ctx> {
 impl<'ctx> FunctionBuilder<'ctx> {
   pub fn add_stmt(
     &mut self,
+    mir: &Mir<'ctx>,
     blk: Block,
     lhs: Reference,
     rhs: Value,
-  ) {
+  ) -> Result<(), TypeError<'ctx>> {
+    {
+      let ty_lhs = self.bindings[lhs.0 as usize].ty;
+      let ty_rhs = rhs.ty(self, mir)?;
+      if ty_lhs != ty_rhs {
+        return Err(TypeErrorVariant::Mismatched {
+          lhs: ty_lhs,
+          rhs: ty_rhs,
+        });
+      }
+    }
     let blk_data = &mut self.blks[blk.0 as usize];
     blk_data.stmts.push(Statement { lhs, rhs });
+    Ok(())
   }
 
   // NOTE(ubsan): the returned blocks initially have
@@ -434,6 +524,12 @@ impl<'ctx> Type<'ctx> {
     self.0.align()
   }
 }
+impl<'ctx> PartialEq for Type<'ctx> {
+  fn eq(&self, other: &Self) -> bool {
+    self.0 as *const _ == other.0 as *const _
+  }
+}
+impl<'ctx> Eq for Type<'ctx> { }
 #[derive(Copy, Clone, Debug)]
 pub struct FunctionDecl(usize);
 
@@ -452,26 +548,43 @@ impl<'a> MirCtxt<'a> {
   }
 }
 
+#[derive(Debug)]
+pub struct FunctionType<'ctx> {
+  pub params: TypeList<'ctx>,
+  pub ret: Type<'ctx>,
+}
+
+struct Function<'ctx> {
+  ty: FunctionType<'ctx>,
+  name: Option<String>,
+  value: Option<FunctionValue<'ctx>>,
+}
+
 pub struct Mir<'ctx> {
-  funcs: Vec<(Option<String>, Option<FunctionValue<'ctx>>)>,
+  funcs: Vec<Function<'ctx>>,
   types: &'ctx ArenaMap<String, TypeVariant<'ctx>>,
 }
 
 // creation and run
 impl<'ctx> Mir<'ctx> {
-  pub fn new(ctx: &'ctx MirCtxt<'ctx>, mut ast: Ast) -> Self {
+  pub fn new(
+    ctx: &'ctx MirCtxt<'ctx>,
+    mut ast: Ast,
+  ) -> Result<Self, TypeError<'ctx>> {
     let mut self_: Mir<'ctx> = Mir {
       funcs: vec![],
       types: &ctx.types,
     };
 
-    ast.build_mir(&mut self_);
+    ast.build_mir(&mut self_)?;
 
-    self_
+    Ok(self_)
   }
 
   pub fn run(&self) -> i32 {
-    for (i, &(ref name, _)) in self.funcs.iter().enumerate() {
+    for (i, &Function { ref name, .. })
+      in self.funcs.iter().enumerate()
+    {
       if let Some("main") = name.as_ref().map(|s| &**s) {
         return Runner::new(self).run(FunctionDecl(i));
       }
@@ -485,19 +598,17 @@ impl<'ctx> Mir<'ctx> {
   pub fn add_function_decl(
     &mut self,
     name: Option<String>,
+    ty: FunctionType<'ctx>,
   ) -> FunctionDecl {
-    self.funcs.push((name, None));
+    self.funcs.push(Function { ty, name, value: None });
     FunctionDecl(self.funcs.len() - 1)
   }
 
   pub fn get_function_builder(
     &self,
     decl: FunctionDecl,
-    params: Vec<Type<'ctx>>,
-    ret_ty: Type<'ctx>,
   ) -> FunctionBuilder<'ctx> {
-    let params = TypeList::from_existing(params);
-    FunctionBuilder::new(decl, params, ret_ty)
+    FunctionBuilder::new(decl, self)
   }
 
   pub fn add_function_definition(
@@ -505,14 +616,12 @@ impl<'ctx> Mir<'ctx> {
     builder: FunctionBuilder<'ctx>,
   ) {
     let value = FunctionValue {
-      params: builder.params,
-      ret_ty: builder.ret_ty,
       blks: builder.blks,
       locals: builder.locals,
       bindings: builder.bindings,
     };
 
-    self.funcs[builder.decl.0].1 = Some(value);
+    self.funcs[builder.decl.0].value = Some(value);
   }
 }
 
@@ -577,18 +686,20 @@ impl<'ctx> Mir<'ctx> {
         TypeVariant::__LifetimeHolder(_) => unreachable!(),
       }
     }
-    for &(ref name, ref value) in &self.funcs {
+    for &Function { ref ty, ref name, ref value }
+      in &self.funcs
+    {
       let (name, value) =
         (name.as_ref().unwrap(), value.as_ref().unwrap());
       print!("func {}(", name);
-      if !value.params.tys.is_empty() {
-        let tys = &value.params.tys;
+      if !ty.params.tys.is_empty() {
+        let tys = &ty.params.tys;
         for par in &tys[..tys.len() - 1] {
           print!("{}, ", par.0);
         }
         print!("{}", tys[tys.len() - 1].0);
       }
-      println!("): {} = {{", value.ret_ty.0);
+      println!("): {} = {{", ty.ret.0);
 
       println!("  locals = {{");
       for loc_ty in &value.locals {
@@ -648,7 +759,7 @@ impl<'ctx> Mir<'ctx> {
           ref callee,
           ref args,
         } => {
-          let name = match self.funcs[callee.0].0 {
+          let name = match self.funcs[callee.0].name {
             Some(ref name) => &**name,
             None => "<anonymous>",
           };

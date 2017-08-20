@@ -1,4 +1,4 @@
-- typechecking!
+- fail tests
 
 - add ()
 - side-effecting functions (`log`)
@@ -11,3 +11,5 @@
 
 - non-addition operators
 - reference functions parameters
+
+- good typechecking
