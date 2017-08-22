@@ -1,4 +1,4 @@
-- fail tests
+- prettier error output
 
 - add ()
 - side-effecting functions (`log`)
@@ -9,6 +9,7 @@
 - unary operators (-, +)
 - checking to see if a number is in range
 
+- parens
 - non-addition operators
 - reference functions parameters
 

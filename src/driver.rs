@@ -15,6 +15,14 @@ use std::fs::File;
 use ast::Ast;
 use mir::Mir;
 
+macro_rules! user_error {
+  ($($args:expr),* $(,)*) => ({
+    eprintln!($($args),*);
+    ::std::panic::set_hook(Box::new(|_| {}));
+    panic!();
+  })
+}
+
 fn main() {
   use clap::{App, Arg};
   use std::io::Read;
@@ -57,19 +65,29 @@ fn main() {
   let do_run = !matches.is_present("no-run");
 
   let mut file = Vec::new();
-  File::open(&name)
-    .expect(&name)
-    .read_to_end(&mut file)
-    .unwrap();
+  match File::open(&name) {
+    Ok(mut o) => {
+      o.read_to_end(&mut file).unwrap();
+    },
+    Err(e) => {
+      user_error!("Failure to open file '{}': {}", name, e);
+    }
+  }
   let file = String::from_utf8(file).unwrap();
 
-  let ast = Ast::new(&file).unwrap();
+  let ast = match Ast::new(&file) {
+    Ok(ast) => ast,
+    Err(e) => user_error!("error: {:?}", e),
+  };
   if print_ast {
     println!("    ===   AST   ===    ");
     println!("{}", ast);
   }
   let ctxt = mir::MirCtxt::new();
-  let mir = Mir::new(&ctxt, ast).unwrap();
+  let mir = match Mir::new(&ctxt, ast) {
+    Ok(mir) => mir,
+    Err(e) => user_error!("error: {:?}", e),
+  };
   if print_mir {
     println!("    ===   MIR   ===    ");
     mir.print();
