@@ -185,6 +185,9 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
           mir::Value::Literal(ref lit) => {
             self.stmt_lit(lhs, lit)
           }
+          mir::Value::Negative(ref_) => {
+            self.stmt_neg(lhs, ref_);
+          }
           mir::Value::Reference(rhs) => {
             self.stmt_ref(lhs, rhs);
           }
@@ -236,6 +239,21 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     let src = self.get_binding((Frame::Current, src));
     unsafe {
       self.write((Frame::Current, dst), src);
+    }
+  }
+
+  fn stmt_neg(
+    &mut self,
+    dst: mir::Reference,
+    src: mir::Reference,
+  ) {
+    let (src, ty) = self.get_binding((Frame::Current, src));
+    unsafe {
+      let mut src = ::std::mem::transmute::<i32, [u8; 4]>(
+        -Self::get_value::<i32>((src, ty))
+      );
+      self
+        .write((Frame::Current, dst), (src.as_mut_ptr(), ty));
     }
   }
 

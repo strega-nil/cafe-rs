@@ -276,6 +276,14 @@ impl<'src> Parser<'src> {
         start,
         end,
       ),
+      TokenVariant::Minus => {
+        let expr = self.parse_single_expr()?;
+        Spanned::new(
+          ExpressionVariant::Negative(Box::new(expr)),
+          start,
+          end,
+        )
+      }
       TokenVariant::OpenParen => {
         let end = eat_token!(self, CloseParen).end;
         Spanned::new(

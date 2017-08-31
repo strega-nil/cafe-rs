@@ -3,10 +3,10 @@ func main(): s32 {
 }
 
 func fib(n: s32): s32 {
-  let neg_one: s32 = 4294967295;
+  let neg_one: s32 = -1;
   if n <= 1 {
     n
   } else {
-    fib(n + neg_one) + fib(n + neg_one + neg_one)
+    fib(n + neg_one) + fib(n + -2)
   }
 }

@@ -51,6 +51,7 @@ pub enum ExpressionVariant {
   IntLiteral(u64),
   BoolLiteral(bool),
   Variable(String),
+  Negative(Box<Expression>),
   IfElse {
     cond: Box<Expression>,
     then: Box<Expression>,
@@ -87,6 +88,9 @@ impl ExpressionVariant {
       }
       ExpressionVariant::Variable(ref name) => {
         builder.get_binding_type(locals[name])
+      }
+      ExpressionVariant::Negative(ref e) => {
+        e.ty(funcs, locals, builder, mir)
       }
       ExpressionVariant::IfElse { ref then, .. } => {
         then.ty(funcs, locals, builder, mir)
@@ -154,6 +158,17 @@ impl ExpressionVariant {
           block,
           dst,
           mir::Value::bool_lit(b),
+        )?
+      }
+      ExpressionVariant::Negative(ref e) => {
+        let ty = e.ty(funcs, locals, builder, mir);
+        let var = builder.add_anonymous_local(ty);
+        e.to_mir(var, mir, builder, block, funcs, locals)?;
+        builder.add_stmt(
+          mir,
+          block,
+          dst,
+          mir::Value::Negative(var),
         )?
       }
       ExpressionVariant::Variable(ref name) => {
@@ -499,6 +514,9 @@ impl Display for ExpressionVariant {
       ExpressionVariant::IntLiteral(i) => write!(f, "{}", i),
       ExpressionVariant::BoolLiteral(b) => write!(f, "{}", b),
       ExpressionVariant::Variable(ref s) => write!(f, "{}", s),
+      ExpressionVariant::Negative(ref e) => {
+        write!(f, "-{}", e.thing)
+      }
       ExpressionVariant::BinOp {
         ref lhs,
         ref rhs,

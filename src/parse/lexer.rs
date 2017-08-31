@@ -43,7 +43,7 @@ pub enum TokenVariant {
 
   // TODO(ubsan): should be in its own, out-of-line enum
   Plus,
-  //Minus,
+  Minus,
   //Star,
   //And,
   LessEq,
@@ -260,9 +260,7 @@ impl<'src> Lexer<'src> {
             end_loc,
           ))
         }
-        _ => Err(
-          span!(LexerErrorVariant::ReservedToken("-"), loc, loc),
-        ),
+        _ => Ok(span!(TokenVariant::Minus, loc)),
       },
       '*' => match self.peekc() {
         Some(('=', end_loc)) => Err(span!(

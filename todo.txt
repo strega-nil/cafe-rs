@@ -1,7 +1,5 @@
 - prettier error output
 
-- unary operators (-, +)
-
 - blocks
 - else if
 
@@ -10,6 +8,8 @@
 - parens
 - non-addition operators
 - reference functions parameters
+
+- unary operators (+)
 
 - good typechecking
   - should be a pass on ast, probably

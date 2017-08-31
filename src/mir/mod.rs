@@ -176,6 +176,7 @@ impl Literal {
 pub enum Value {
   Literal(Literal),
   Reference(Reference),
+  Negative(Reference),
   Add(Reference, Reference),
   LessEq(Reference, Reference),
   Call {
@@ -203,6 +204,14 @@ impl Value {
   ) -> Result<Type<'ctx>, TypeError<'ctx>> {
     match *self {
       Value::Literal(ref lit) => Ok(lit.ty(mir)),
+      Value::Negative(ref_) => {
+        let ty = builder.bindings[ref_.0 as usize].ty;
+        let s32 = mir.get_builtin_type(
+          BuiltinType::SInt(IntSize::I32),
+        );
+        assert!(ty == s32, "negative must be done on s32");
+        Ok(builder.bindings[ref_.0 as usize].ty)
+      }
       Value::Reference(ref_) => {
         Ok(builder.bindings[ref_.0 as usize].ty)
       }
@@ -215,6 +224,10 @@ impl Value {
             rhs: ty_rhs,
           })
         } else {
+          let s32 = mir.get_builtin_type(
+            BuiltinType::SInt(IntSize::I32),
+          );
+          assert!(ty_lhs == s32, "addition must be done on s32");
           Ok(ty_lhs)
         }
       }
@@ -777,6 +790,11 @@ impl<'ctx> Mir<'ctx> {
       let print_value = |val: &Value| match *val {
         Value::Literal(ref n) => {
           println!("literal {:?};", n);
+        }
+        Value::Negative(r) => {
+          print!("-");
+          print_binding(&value.bindings, r);
+          println!(";");
         }
         Value::Reference(r) => {
           print_binding(&value.bindings, r);

@@ -7,9 +7,8 @@ func should_recurse(n: s32): bool {
 }
 
 func fib(n: s32): s32 {
-  let neg_one: s32 = 4294967295;
   if should_recurse(n) {
-    fib(n + neg_one) + fib(n + neg_one + neg_one)
+    fib(n + -1) + fib(n + -2)
   } else {
     n
   }
