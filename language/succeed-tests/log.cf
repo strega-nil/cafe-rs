@@ -1,0 +1,6 @@
+func main(): s32 {
+  log(42424242);
+  log(true);
+  log(());
+  0
+}
