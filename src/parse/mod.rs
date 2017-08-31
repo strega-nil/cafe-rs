@@ -258,7 +258,6 @@ impl<'src> Parser<'src> {
       }
       //TokenVariant::And => unimplemented!(),
       //TokenVariant::Star => unimplemented!(),
-      TokenVariant::OpenParen => unimplemented!(),
       tok => unexpected_token!(tok, Type, start, end),
     }
   }
@@ -277,6 +276,14 @@ impl<'src> Parser<'src> {
         start,
         end,
       ),
+      TokenVariant::OpenParen => {
+        let end = eat_token!(self, CloseParen).end;
+        Spanned::new(
+          ExpressionVariant::UnitLiteral,
+          start,
+          end,
+        )
+      }
       TokenVariant::Ident(s) => {
         Spanned::new(ExpressionVariant::Variable(s), start, end)
       }
@@ -354,11 +361,27 @@ impl<'src> Parser<'src> {
       }
 
       if let ExpressionVariant::Variable(callee) = expr.thing {
-        expr = Spanned::new(
-          ExpressionVariant::Call { callee, args },
-          expr.start,
-          end,
-        );
+      // NOTE(ubsan): special handling for logging
+        if callee == "log" {
+          assert!(args.len() == 1);
+          let arg = args.into_boxed_slice();
+          let arg = unsafe {
+            Box::from_raw(
+              Box::into_raw(arg) as *mut Expression,
+            )
+          };
+          expr = Spanned::new(
+            ExpressionVariant::Log(arg),
+            expr.start,
+            end,
+          );
+        } else {
+          expr = Spanned::new(
+            ExpressionVariant::Call { callee, args },
+            expr.start,
+            end,
+          );
+        }
       } else {
         unimplemented!()
       }
@@ -439,7 +462,7 @@ impl<'src> Parser<'src> {
       Left(expr) => Ok(expr),
       Right(tok) => if Self::end_of_expr(&tok).is_some() {
         Ok(Spanned::new(
-          ExpressionVariant::Nullary,
+          ExpressionVariant::UnitLiteral,
           tok.start,
           tok.end,
         ))
@@ -565,10 +588,9 @@ impl<'src> Parser<'src> {
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
       TokenVariant::Ident(name) => {
-        eat_token!(self, Colon);
         let params = self.parse_param_list()?;
         let ret_ty = {
-          if let Some(_) = maybe_eat_token!(self, SkinnyArrow) {
+          if let Some(_) = maybe_eat_token!(self, Colon) {
             self.parse_type()?
           } else {
             StringlyType::Unit

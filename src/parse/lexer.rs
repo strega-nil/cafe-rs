@@ -50,7 +50,6 @@ pub enum TokenVariant {
 
   // Declaration/Types/Assignment
   Colon,
-  SkinnyArrow,
   Equals,
 
   // Separators
@@ -247,7 +246,11 @@ impl<'src> Lexer<'src> {
       '-' => match self.peekc() {
         Some(('>', end_loc)) => {
           self.getc();
-          Ok(span!(TokenVariant::SkinnyArrow, loc, end_loc))
+          Err(span!(
+            LexerErrorVariant::ReservedToken("->"),
+            loc,
+            end_loc
+          ))
         }
         Some(('=', end_loc)) => {
           self.getc();

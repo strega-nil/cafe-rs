@@ -47,7 +47,7 @@ impl BinOp {
 
 #[derive(Debug)]
 pub enum ExpressionVariant {
-  Nullary,
+  UnitLiteral,
   IntLiteral(u64),
   BoolLiteral(bool),
   Variable(String),
@@ -65,23 +65,48 @@ pub enum ExpressionVariant {
     callee: String,
     args: Vec<Expression>,
   },
+  Log(Box<Expression>),
 }
 impl ExpressionVariant {
-  fn ty<'ctx>(&self, mir: &Mir<'ctx>) -> mir::Type<'ctx> {
+  fn ty<'ctx>(
+    &self,
+    funcs: &HashMap<String, mir::FunctionDecl>,
+    locals: &HashMap<String, mir::Reference>,
+    builder: &mir::FunctionBuilder<'ctx>,
+    mir: &Mir<'ctx>,
+  ) -> mir::Type<'ctx> {
     match *self {
-      ExpressionVariant::Nullary => {
-        panic!("nil type is unimplemented")
-      }
+      ExpressionVariant::UnitLiteral => mir.get_builtin_type(
+        mir::BuiltinType::Unit,
+      ),
       ExpressionVariant::IntLiteral(_) => mir.get_builtin_type(
         mir::BuiltinType::SInt(mir::IntSize::I32),
       ),
       ExpressionVariant::BoolLiteral(_) => {
         mir.get_builtin_type(mir::BuiltinType::Bool)
       }
-      ExpressionVariant::Variable(_) => unimplemented!(),
-      ExpressionVariant::IfElse { .. } => unimplemented!(),
-      ExpressionVariant::BinOp { .. } => unimplemented!(),
-      ExpressionVariant::Call { .. } => unimplemented!(),
+      ExpressionVariant::Variable(ref name) => {
+        builder.get_binding_type(locals[name])
+      }
+      ExpressionVariant::IfElse { ref then, .. } => {
+        then.ty(funcs, locals, builder, mir)
+      }
+      ExpressionVariant::BinOp {
+        op: BinOp::Plus,
+        ref lhs,
+        ..
+      } => {
+        lhs.ty(funcs, locals, builder, mir)
+      },
+      ExpressionVariant::BinOp { op: BinOp::LessEq, ..  } => {
+        mir.get_builtin_type(mir::BuiltinType::Bool)
+      },
+      ExpressionVariant::Call { ref callee, .. } => {
+        mir.get_function_type(funcs[callee]).ret
+      }
+      ExpressionVariant::Log(_) => {
+        mir.get_builtin_type(mir::BuiltinType::Unit)
+      }
     }
   }
 
@@ -105,9 +130,6 @@ impl ExpressionVariant {
     funcs: &HashMap<String, mir::FunctionDecl>,
     locals: &HashMap<String, mir::Reference>,
   ) -> Result<mir::Block, TypeError<'ctx>> {
-    let s32 = mir.get_builtin_type(
-      mir::BuiltinType::SInt(mir::IntSize::I32),
-    );
     let bool = mir.get_builtin_type(mir::BuiltinType::Bool);
     match *self {
       ExpressionVariant::IntLiteral(i) => {
@@ -116,6 +138,14 @@ impl ExpressionVariant {
           block,
           dst,
           mir::Value::int_lit(i as i32),
+        )?
+      }
+      ExpressionVariant::UnitLiteral => {
+        builder.add_stmt(
+          mir,
+          block,
+          dst,
+          mir::Value::unit_lit(),
         )?
       }
       ExpressionVariant::BoolLiteral(b) => {
@@ -163,12 +193,14 @@ impl ExpressionVariant {
         ref op,
       } => {
         let lhs = {
-          let var = builder.add_anonymous_local(s32);
+          let ty = lhs.ty(funcs, locals, builder, mir);
+          let var = builder.add_anonymous_local(ty);
           lhs.to_mir(var, mir, builder, block, funcs, locals)?;
           var
         };
         let rhs = {
-          let var = builder.add_anonymous_local(s32);
+          let ty = rhs.ty(funcs, locals, builder, mir);
+          let var = builder.add_anonymous_local(ty);
           rhs.to_mir(var, mir, builder, block, funcs, locals)?;
           var
         };
@@ -186,7 +218,8 @@ impl ExpressionVariant {
         let args = args
           .iter()
           .map(|v| {
-            let var = builder.add_anonymous_local(s32);
+            let ty = v.ty(funcs, locals, builder, mir);
+            let var = builder.add_anonymous_local(ty);
             v.to_mir(var, mir, builder, block, funcs, locals)?;
             Ok(var)
           })
@@ -202,8 +235,11 @@ impl ExpressionVariant {
           panic!("function `{}` doesn't exist", callee);
         }
       }
-      ExpressionVariant::Nullary => {
-        panic!("nullary types not yet supported")
+      ExpressionVariant::Log(ref arg) => {
+        let ty = arg.ty(funcs, locals, builder, mir);
+        let var = builder.add_anonymous_local(ty);
+        arg.to_mir(var, mir, builder, block, funcs, locals)?;
+        builder.add_stmt(mir, block, dst, mir::Value::Log(var))?;
       }
     }
 
@@ -258,7 +294,8 @@ impl Function {
     for stmt in &self.blk.statements {
       match **stmt {
         StatementVariant::Expr(ref e) => {
-          let tmp = builder.add_anonymous_local(e.ty(mir));
+          let ty = e.ty(funcs, &locals, &builder, mir);
+          let tmp = builder.add_anonymous_local(ty);
           e.to_mir(
             tmp,
             mir,
@@ -408,6 +445,10 @@ impl Ast {
       Some(String::from("bool")),
       mir::TypeVariant::bool(),
     );
+    mir.insert_type(
+      Some(String::from("unit")),
+      mir::TypeVariant::unit(),
+    );
   }
 }
 
@@ -459,7 +500,7 @@ impl Display for ExpressionVariant {
         ref els,
       } => write!(
         f,
-        r"if {} {{
+r"if {} {{
     {}
   }} else {{
     {}
@@ -482,7 +523,9 @@ impl Display for ExpressionVariant {
           write!(f, ")")
         }
       }
-      ExpressionVariant::Nullary => write!(f, "()"),
+      ExpressionVariant::Log(ref arg) =>
+        write!(f, "log({})", arg.thing),
+      ExpressionVariant::UnitLiteral => write!(f, "()"),
     }
   }
 }

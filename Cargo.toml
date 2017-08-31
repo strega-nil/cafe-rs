@@ -1,15 +1,14 @@
 [package]
+authors = ["Nicole Mazzuca <npmazzuca@gmail.com>"]
 name = "cafe"
 version = "0.1.0"
-authors = ["Nicole Mazzuca <npmazzuca@gmail.com>"]
 
 [[bin]]
 name = "cafe"
 path = "src/driver.rs"
 
 [dependencies]
-#llvm-sys = "38"
-unicode-normalization = "0.1.4"
-unicode-xid = "0.1.0"
+clap = "2.26.0"
 ucd = "0.1.1"
-clap = "2.24.2"
+unicode-normalization = "0.1.5"
+unicode-xid = "0.1.0"

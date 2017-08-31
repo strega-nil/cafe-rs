@@ -1,5 +1,6 @@
 - named typeclass implementations
   - anonymous as well for "default"
+  - http://www.lpw25.net/ml2014.pdf
 - effects like F*
   - http://www2.imm.dtu.dk/~fnie/Papers/NiNi99tes.pdf
   - https://www.fstar-lang.org/papers/dm4free/
@@ -8,22 +9,56 @@
   - http://209.68.42.137/ucsd-pages/Courses/cse227.w03/handouts/cyclone-regions.pdf
   - https://www.microsoft.com/en-us/research/publication/uniqueness-and-reference-immutability-for-safe-parallelism
   - http://web.cs.ucla.edu/~palsberg/tba/papers/tofte-talpin-iandc97.pdf
+- just cool
+  - http://www.ccs.neu.edu/home/amal/papers/funtal.pdf
+  - http://www.ccs.neu.edu/home/amal/papers/linking-types.pdf
 
 - syntax:
+
   ```
-  func id: (n: s32) -> s32 {
+  func id(n: s32): s32 {
     n
   }
 
-  variant optional: (t: type) -> type {
+  type optional(t: type) = variant {
     some: t,
     none,
-  }
+  };
 
-  struct point2: (t: type) -> type {
+  type point2(t: type) = struct {
     x: t,
     y: t,
   }
 
-  func array: (t: type, n: usize) -> type = [n]t;
+  // idea for type modules?
+  type point2(t: type <: Add) {
+    // maybe s/data/self or something?
+    data = struct {
+      x: t,
+      y: t,
+    };
+
+    func add(self: data, other: data): data {
+      data {
+        x = t.add(self.x, other.x),
+        y = t.add(self.y, other.y),
+      }
+    }
+  };
+
+  type point2_add: Add(point2, point2) {
+    func add(self: point2, other: point2): point2 {
+      point2.add(self, other)
+      // or
+      // self.add(other)
+    }
+  };
+
+  func array(t: type, n: usize): type = [n]t;
+
+  func print(implicit t <: Show, s: t) {
+    std.io.print(t.show(s))
+  }
+
+  print(implicit Show_int, 5);
   ```

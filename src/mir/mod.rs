@@ -26,7 +26,9 @@ where
     + Rem<Output = T>
     + PartialEq,
 {
-  if x % to == x - x {
+  if to == x - x {
+    x
+  } else if x % to == x - x {
     x
   } else {
     x + (to - x % to)
@@ -58,6 +60,7 @@ pub enum BuiltinType {
   SInt(IntSize),
   //UInt(IntSize),
   Bool,
+  Unit,
 }
 
 impl BuiltinType {
@@ -65,6 +68,7 @@ impl BuiltinType {
     match *self {
       BuiltinType::SInt(sz) => sz.size(),
       BuiltinType::Bool => 1,
+      BuiltinType::Unit => 0,
     }
   }
 
@@ -72,6 +76,7 @@ impl BuiltinType {
     match *self {
       BuiltinType::SInt(sz) => sz.size(),
       BuiltinType::Bool => 1,
+      BuiltinType::Unit => 0,
     }
   }
 }
@@ -83,6 +88,7 @@ impl Display for BuiltinType {
         write!(f, "s{}", size.size_bits())
       }
       BuiltinType::Bool => write!(f, "bool"),
+      BuiltinType::Unit => write!(f, "unit"),
     }
   }
 }
@@ -115,6 +121,9 @@ impl<'ctx> TypeVariant<'ctx> {
   pub fn bool() -> Self {
     TypeVariant::Builtin(BuiltinType::Bool)
   }
+  pub fn unit() -> Self {
+    TypeVariant::Builtin(BuiltinType::Unit)
+  }
 }
 impl<'ctx> Display for TypeVariant<'ctx> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -144,6 +153,7 @@ impl Reference {
 pub enum Literal {
   Int(i32),
   Bool(bool),
+  Unit,
 }
 
 impl Literal {
@@ -154,6 +164,9 @@ impl Literal {
       }
       Literal::Bool(_) => {
         mir.get_builtin_type(BuiltinType::Bool)
+      }
+      Literal::Unit => {
+        mir.get_builtin_type(BuiltinType::Unit)
       }
     }
   }
@@ -169,6 +182,7 @@ pub enum Value {
     callee: FunctionDecl,
     args: Vec<Reference>,
   },
+  Log(Reference),
 }
 
 impl Value {
@@ -177,6 +191,9 @@ impl Value {
   }
   pub fn bool_lit(b: bool) -> Self {
     Value::Literal(Literal::Bool(b))
+  }
+  pub fn unit_lit() -> Self {
+    Value::Literal(Literal::Unit)
   }
 
   pub fn ty<'ctx>(
@@ -193,7 +210,10 @@ impl Value {
         let ty_lhs = builder.bindings[lhs.0 as usize].ty;
         let ty_rhs = builder.bindings[rhs.0 as usize].ty;
         if ty_rhs != ty_lhs {
-          Err(TypeErrorVariant::Mismatched { lhs: ty_lhs, rhs: ty_rhs })
+          Err(TypeErrorVariant::Mismatched {
+            lhs: ty_lhs,
+            rhs: ty_rhs,
+          })
         } else {
           Ok(ty_lhs)
         }
@@ -202,7 +222,10 @@ impl Value {
         let ty_lhs = builder.bindings[lhs.0 as usize].ty;
         let ty_rhs = builder.bindings[rhs.0 as usize].ty;
         if ty_rhs != ty_lhs {
-          Err(TypeErrorVariant::Mismatched { lhs: ty_lhs, rhs: ty_rhs })
+          Err(TypeErrorVariant::Mismatched {
+            lhs: ty_lhs,
+            rhs: ty_rhs,
+          })
         } else {
           Ok(mir.get_builtin_type(BuiltinType::Bool))
         }
@@ -229,6 +252,9 @@ impl Value {
         }
 
         Ok(callee.ty.ret)
+      }
+      Value::Log(_) => {
+        Ok(mir.get_builtin_type(BuiltinType::Unit))
       }
     }
   }
@@ -369,6 +395,7 @@ impl<'a, 'ctx> IntoIterator for &'a TypeList<'ctx> {
 
 #[derive(Debug)]
 struct FunctionValue<'ctx> {
+  // NOTE(ubsan): *this is just for stack locals, not for args*
   locals: TypeList<'ctx>,
   blks: Vec<BlockData>,
   bindings: Vec<Binding<'ctx>>,
@@ -425,6 +452,10 @@ impl<'ctx> FunctionBuilder<'ctx> {
 
   pub fn get_param(&self, n: u32) -> Reference {
     Reference::param(n)
+  }
+
+  pub fn get_binding_type(&self, loc: Reference) -> Type<'ctx> {
+    self.bindings[loc.0 as usize].ty
   }
 }
 
@@ -639,6 +670,13 @@ impl<'ctx> Mir<'ctx> {
     }
   }
 
+  pub fn get_function_type(
+    &self,
+    decl: FunctionDecl,
+  ) -> &FunctionType<'ctx> {
+    &self.funcs[decl.0].ty
+  }
+
   pub fn get_type(
     &self,
     stype: &StringlyType,
@@ -655,6 +693,7 @@ impl<'ctx> Mir<'ctx> {
     let name = match ty {
       BuiltinType::SInt(IntSize::I32) => "s32",
       BuiltinType::Bool => "bool",
+      BuiltinType::Unit => "unit",
     };
     match self.types.get(name) {
       Some(t) => Type(t),
@@ -771,6 +810,11 @@ impl<'ctx> Mir<'ctx> {
             }
             print_binding(&value.bindings, args[args.len() - 1]);
           }
+          println!(");");
+        }
+        Value::Log(ref arg) => {
+          print!("log(");
+          print_binding(&value.bindings, *arg);
           println!(");");
         }
       };

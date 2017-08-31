@@ -200,6 +200,7 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
           } => {
             self.stmt_call(lhs, callee, args);
           }
+          mir::Value::Log(arg) => self.stmt_log(lhs, arg),
         }
       }
       match self.current_state().func.blks[cur_blk].term {
@@ -283,6 +284,9 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
         backing[0] = b as u8;
         self.mir.get_builtin_type(BuiltinType::Bool)
       }
+      mir::Literal::Unit => {
+        self.mir.get_builtin_type(BuiltinType::Unit)
+      },
     };
     unsafe {
       self.write(
@@ -337,6 +341,29 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
       );
       self
         .write((Frame::Current, dst), (src.as_mut_ptr(), lhs.1));
+    }
+  }
+
+  fn stmt_log(
+    &mut self,
+    _: mir::Reference,
+    thing: mir::Reference,
+  ) {
+    let thing = self.get_binding((Frame::Current, thing));
+    if let mir::TypeVariant::Builtin(ref ty) = *(thing.1).0 {
+      unsafe { match *ty {
+        mir::BuiltinType::SInt(mir::IntSize::I32) => {
+          println!("log: {}", Self::get_value::<i32>(thing));
+        }
+        mir::BuiltinType::Bool => {
+          println!("log: {}", Self::get_value::<bool>(thing));
+        }
+        mir::BuiltinType::Unit => {
+          println!("log: ()");
+        }
+      }}
+    } else {
+      unimplemented!()
     }
   }
 }
