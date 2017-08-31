@@ -10,12 +10,13 @@ item-definition =
   | `func` definition
 
 definition-start =
-  | ident `:` parameter-list? return-type?
+  | ident parameter-list? declared-type?
 definition :=
   | definition-start block
+  | definition-start `=` expression `;`
 
-return-type =
-  | `->` type
+declared-type =
+  | `:` type
 
 parameter-list = 
   | `(` parameter-list-no-parens `)`
@@ -23,7 +24,7 @@ parameter-list-no-parens =
   | parameter `,`?
   | parameter `,` parameter-list-no-parens
 parameter =
-  | ident `:` type
+  | ident declared-type
 
 type =
   | identifier
@@ -32,11 +33,12 @@ block =
   | `{` statement* expression `}`
 
 statement =
-  | `let` ident `:` type `=` expression `;`
+  | `let` definition
   | expression `;`
 
 expression =
-  | number-literal
+  | literal
   | expression binop expression
   | `if` expression `{` expression `}`
     -- NOTE(ubsan): should just take a block
+  | `-` expression
