@@ -1,12 +1,10 @@
 - prettier error output
 
-- add ()
-- side-effecting functions (`log`)
+- unary operators (-, +)
 
 - blocks
 - else if
 
-- unary operators (-, +)
 - checking to see if a number is in range
 
 - parens

@@ -500,8 +500,10 @@ impl<'src> Parser<'src> {
           );
         }
       };
-      eat_token!(self, Colon);
-      let ty = self.parse_type()?;
+      let ty = match maybe_eat_token!(self, Colon) {
+        Some(_) => Some(self.parse_type()?),
+        None => None,
+      };
       eat_token!(self, Equals);
       let initializer = self.parse_expr()?;
       let end = eat_token!(self, Semicolon).end;

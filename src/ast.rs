@@ -252,7 +252,7 @@ pub enum StatementVariant {
   Expr(Expression),
   Local {
     name: String,
-    ty: StringlyType,
+    ty: Option<StringlyType>,
     initializer: Expression,
   },
 }
@@ -310,7 +310,11 @@ impl Function {
           ref ty,
           ref initializer,
         } => {
-          let ty = mir.get_type(ty).unwrap();
+          let ty = if let Some(ref ty) = *ty {
+            mir.get_type(ty).unwrap()
+          } else {
+            initializer.ty(funcs, &locals, &builder, mir)
+          };
           let var = builder.add_local(name.clone(), ty);
           initializer.to_mir(
             var,
@@ -469,7 +473,13 @@ impl Display for StatementVariant {
         ref name,
         ref ty,
         ref initializer,
-      } => write!(f, "let {}: {} = {}", name, ty, **initializer),
+      } => {
+        if let Some(ref ty) = *ty {
+          write!(f, "let {}: {} = {}", name, ty, **initializer)
+        } else {
+          write!(f, "let {} = {}", name, **initializer)
+        }
+      }
     }
   }
 }
