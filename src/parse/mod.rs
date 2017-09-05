@@ -307,13 +307,10 @@ impl<'src> Parser<'src> {
       ),
       TokenVariant::KeywordIf => {
         let cond = self.parse_expr()?;
-        eat_token!(self, OpenBrace);
-        let then = self.parse_expr()?;
-        eat_token!(self, CloseBrace);
+        let then = self.parse_block()?;
         eat_token!(self, KeywordElse);
-        eat_token!(self, OpenBrace);
-        let els = self.parse_expr()?;
-        let end = eat_token!(self, CloseBrace).end;
+        let els = self.parse_block()?;
+        let end = els.end;
         Spanned::new(
           ExpressionVariant::IfElse {
             cond: Box::new(cond),
