@@ -1,0 +1,9 @@
+func main(): s32 {
+  let x = if true {
+    1
+  } else {
+    0
+  };
+
+  x
+}

@@ -130,16 +130,16 @@ impl ExpressionVariant {
     // TODO(ubsan): this state should probably all be in a struct
     mir: &mut Mir<'ctx>,
     builder: &mut mir::FunctionBuilder<'ctx>,
-    block: mir::Block,
+    block: &mut mir::Block,
     funcs: &HashMap<String, mir::FunctionDecl>,
     locals: &HashMap<String, mir::Reference>,
-  ) -> Result<mir::Block, TypeError<'ctx>> {
+  ) -> Result<(), TypeError<'ctx>> {
     let bool = mir.get_builtin_type(mir::BuiltinType::Bool);
     match *self {
       ExpressionVariant::IntLiteral(i) => {
         builder.add_stmt(
           mir,
-          block,
+          *block,
           dst,
           mir::Value::int_lit(i as i32),
         )?
@@ -147,7 +147,7 @@ impl ExpressionVariant {
       ExpressionVariant::UnitLiteral => {
         builder.add_stmt(
           mir,
-          block,
+          *block,
           dst,
           mir::Value::unit_lit(),
         )?
@@ -155,7 +155,7 @@ impl ExpressionVariant {
       ExpressionVariant::BoolLiteral(b) => {
         builder.add_stmt(
           mir,
-          block,
+          *block,
           dst,
           mir::Value::bool_lit(b),
         )?
@@ -166,7 +166,7 @@ impl ExpressionVariant {
         e.to_mir(var, mir, builder, block, funcs, locals)?;
         builder.add_stmt(
           mir,
-          block,
+          *block,
           dst,
           mir::Value::Negative(var),
         )?
@@ -178,7 +178,7 @@ impl ExpressionVariant {
         if let Some(&loc) = locals.get(name) {
           builder.add_stmt(
             mir,
-            block,
+            *block,
             dst,
             mir::Value::Reference(loc),
           )?;
@@ -196,11 +196,25 @@ impl ExpressionVariant {
           cond.to_mir(var, mir, builder, block, funcs, locals)?;
           var
         };
-        let (then_bb, els_bb, final_bb) =
-          builder.term_if_else(block, cond);
-        then.to_mir(dst, mir, builder, then_bb, funcs, locals)?;
-        els.to_mir(dst, mir, builder, els_bb, funcs, locals)?;
-        return Ok(final_bb);
+        let (mut then_bb, mut els_bb, final_bb) =
+          builder.term_if_else(*block, cond);
+        then.to_mir(
+          dst,
+          mir,
+          builder,
+          &mut then_bb,
+          funcs,
+          locals,
+        )?;
+        els.to_mir(
+          dst,
+          mir,
+          builder,
+          &mut els_bb,
+          funcs,
+          locals,
+        )?;
+        *block = final_bb;
       }
       ExpressionVariant::BinOp {
         ref lhs,
@@ -221,7 +235,7 @@ impl ExpressionVariant {
         };
         builder.add_stmt(
           mir,
-          block,
+          *block,
           dst,
           Self::mir_binop(*op, lhs, rhs),
         )?;
@@ -242,7 +256,7 @@ impl ExpressionVariant {
         if let Some(&callee) = funcs.get(callee) {
           builder.add_stmt(
             mir,
-            block,
+            *block,
             dst,
             mir::Value::Call { callee, args },
           )?
@@ -254,11 +268,16 @@ impl ExpressionVariant {
         let ty = arg.ty(funcs, locals, builder, mir);
         let var = builder.add_anonymous_local(ty);
         arg.to_mir(var, mir, builder, block, funcs, locals)?;
-        builder.add_stmt(mir, block, dst, mir::Value::Log(var))?;
+        builder.add_stmt(
+          mir,
+          *block,
+          dst,
+          mir::Value::Log(var),
+        )?;
       }
     }
 
-    Ok(block)
+    Ok(())
   }
 }
 pub type Expression = Spanned<ExpressionVariant>;
@@ -305,7 +324,7 @@ impl Function {
         .insert(param.0.clone(), builder.get_param(i as u32));
     }
 
-    let block = builder.entrance();
+    let mut block = builder.entrance();
     for stmt in &self.blk.statements {
       match **stmt {
         StatementVariant::Expr(ref e) => {
@@ -315,7 +334,7 @@ impl Function {
             tmp,
             mir,
             &mut builder,
-            block,
+            &mut block,
             funcs,
             &locals,
           )?;
@@ -335,7 +354,7 @@ impl Function {
             var,
             mir,
             &mut builder,
-            block,
+            &mut block,
             funcs,
             &locals,
           )?;
@@ -344,10 +363,14 @@ impl Function {
       };
     }
     let ret = mir::Reference::ret();
-    self
-      .blk
-      .expr
-      .to_mir(ret, mir, &mut builder, block, funcs, &locals)?;
+    self.blk.expr.to_mir(
+      ret,
+      mir,
+      &mut builder,
+      &mut block,
+      funcs,
+      &locals,
+    )?;
     Ok(mir.add_function_definition(builder))
   }
 }

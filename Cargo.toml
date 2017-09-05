@@ -1,10 +1,10 @@
 [package]
 authors = ["Nicole Mazzuca <npmazzuca@gmail.com>"]
-name = "cafe"
+name = "cafec"
 version = "0.1.0"
 
 [[bin]]
-name = "cafe"
+name = "cafec"
 path = "src/driver.rs"
 
 [dependencies]
