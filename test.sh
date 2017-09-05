@@ -7,6 +7,7 @@ fail() {
 
 succeed() {
   echo "accidentally compiled '$1' successfully"
+  exit 1
 }
 
 cargo build || exit

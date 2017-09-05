@@ -329,6 +329,15 @@ impl<'src> Parser<'src> {
           end,
         );
       }
+      TokenVariant::OpenBrace => {
+        let blk = self.parse_block_no_open(start)?;
+        let end = blk.end;
+        Spanned::new(
+          ExpressionVariant::Block(Box::new(blk)),
+          start,
+          end,
+        )
+      }
       tok => panic!(
         "unimplemented expression: {:?}",
         Spanned {
@@ -462,21 +471,6 @@ impl<'src> Parser<'src> {
     }
   }
 
-  fn parse_expr_or_null(&mut self) -> ParserResult<Expression> {
-    match self.maybe_parse_expr()? {
-      Left(expr) => Ok(expr),
-      Right(tok) => if Self::end_of_expr(&tok).is_some() {
-        Ok(Spanned::new(
-          ExpressionVariant::UnitLiteral,
-          tok.start,
-          tok.end,
-        ))
-      } else {
-        unexpected_token!(tok.thing, Expr, tok.start, tok.end)
-      },
-    }
-  }
-
   fn parse_expr(&mut self) -> ParserResult<Expression> {
     match self.maybe_parse_expr()? {
       Left(expr) => Ok(expr),
@@ -523,7 +517,7 @@ impl<'src> Parser<'src> {
         end,
       )));
     }
-    let expr = self.parse_expr_or_null()?;
+    let expr = self.parse_expr()?;
 
     if let TokenVariant::CloseBrace = **self.peek_token()? {
       return Ok(Left(expr));
@@ -569,11 +563,13 @@ impl<'src> Parser<'src> {
     }
   }
 
-  fn parse_block(&mut self) -> ParserResult<Block> {
+  fn parse_block_no_open(
+    &mut self,
+    start: Location,
+  ) -> ParserResult<Block> {
     let mut statements = vec![];
     let expr;
 
-    let sp_start = eat_token!(self, OpenBrace);
     loop {
       match self.parse_expr_or_stmt()? {
         Left(e) => {
@@ -585,7 +581,12 @@ impl<'src> Parser<'src> {
     }
     let sp_end = eat_token!(self, CloseBrace);
     let thing = Block_ { statements, expr };
-    Ok(Spanned::new(thing, sp_start.start, sp_end.end))
+    Ok(Spanned::new(thing, start, sp_end.end))
+  }
+
+  fn parse_block(&mut self) -> ParserResult<Block> {
+    let start = eat_token!(self, OpenBrace).start;
+    self.parse_block_no_open(start)
   }
 
   fn parse_item_definition(

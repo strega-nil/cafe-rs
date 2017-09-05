@@ -52,6 +52,7 @@ pub enum ExpressionVariant {
   BoolLiteral(bool),
   Variable(String),
   Negative(Box<Expression>),
+  Block(Box<Block>),
   IfElse {
     cond: Box<Expression>,
     then: Box<Block>,
@@ -92,6 +93,7 @@ impl ExpressionVariant {
       ExpressionVariant::Negative(ref e) => {
         e.ty(funcs, locals, builder, mir)
       }
+      ExpressionVariant::Block(ref b) => b.ty(funcs, locals, builder, mir),
       ExpressionVariant::IfElse { ref then, .. } => {
         then.ty(funcs, locals, builder, mir)
       }
@@ -186,6 +188,9 @@ impl ExpressionVariant {
         } else {
           panic!("no `{}` name found", name);
         }
+      }
+      ExpressionVariant::Block(ref blk) => {
+        blk.to_mir(dst, mir, builder, block, funcs, locals)?;
       }
       ExpressionVariant::IfElse {
         ref cond,
@@ -572,6 +577,7 @@ impl ExpressionVariant {
         write!(f, " {} ", op)?;
         rhs.fmt(f, indent)
       }
+      ExpressionVariant::Block(ref b) => b.fmt(f, indent),
       ExpressionVariant::IfElse {
         ref cond,
         ref then,
@@ -588,22 +594,22 @@ impl ExpressionVariant {
         ref callee,
         ref args,
       } => {
-        /*
         write!(f, "{}(", callee)?;
         if !args.is_empty() {
           for arg in &args[..args.len() - 1] {
-            write!(f, "{}, ", **arg)?;
+            arg.fmt(f, indent)?;
+            write!(f, ", ")?;
           }
-          write!(f, "{})", *args[args.len() - 1])
+          args[args.len() - 1].fmt(f, indent)?;
+          write!(f, ")")
         } else {
           write!(f, ")")
         }
-        */
-        unimplemented!()
       }
       ExpressionVariant::Log(ref arg) => {
-        //write!(f, "log({})", arg.thing),
-        unimplemented!()
+        write!(f, "log(")?;
+        arg.fmt(f, indent)?;
+        write!(f, ")")
       }
     }
   }

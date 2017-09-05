@@ -1,12 +1,4 @@
 func main(): s32 {
-  let x = if true {
-    if false {
-      1
-    } else {
-      0
-    }
-  } else {
-    1
-  };
+  { let x = 0; () };
   x
 }

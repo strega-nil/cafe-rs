@@ -1,6 +1,7 @@
 - prettier error output
 
-- blocks
+- lexical scoping!!
+
 - else if
 
 - checking to see if a number is in range

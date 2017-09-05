@@ -1,0 +1,8 @@
+func main(): s32 {
+  if true {
+    let x = 0;
+    ()
+  } else { () };
+  let y = x;
+  y
+}
