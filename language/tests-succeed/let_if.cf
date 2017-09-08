@@ -1,4 +1,4 @@
-func main(): s32 {
+let main(): s32 {
   let x = if true {
     1
   } else {

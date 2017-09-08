@@ -1,4 +1,4 @@
-func main(): s32 {
+let main(): s32 {
   log(fib(15));
     
   let res = debug_s32(bloop(true, ()));
@@ -9,22 +9,22 @@ func main(): s32 {
   0
 }
 
-func debug_s32(n: s32): s32 {
+let debug_s32(n: s32): s32 {
   log(n);
   n
 }
 
-func should_recurse(n: s32): bool {
+let should_recurse(n: s32): bool {
   2 <= n
 }
-func fib(n: s32): s32 {
+let fib(n: s32): s32 {
   if should_recurse(n) {
     fib(n + -1) + fib(n + -2)
   } else {
     n
   }
 }
-func bloop(x: bool, y: unit): s32 {
+let bloop(x: bool, y: unit): s32 {
   if x {
     1
   } else {

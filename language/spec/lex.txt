@@ -30,12 +30,12 @@ token =
   | operator
 
 keyword =
-  | `func`
   | `let`
   | `if`
   | `else`
   | `true`
   | `false`
+  # | `func`
   # | `struct`
   # | `variant`
   # | `type`

@@ -1,0 +1,3 @@
+let main(): s32 {
+  true
+}

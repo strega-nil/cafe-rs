@@ -13,7 +13,7 @@ succeed() {
 cargo build || exit
 echo
 echo "running succeed tests"
-for file in language/succeed-tests/*.cf
+for file in language/tests-succeed/*.cf
 do
   echo "compiling $file"
   cargo run -q -- "$file" || fail "$file" $?
@@ -21,7 +21,7 @@ done
 
 echo
 echo "running fail tests"
-for file in language/fail-tests/*.cf
+for file in language/tests-fail/*.cf
 do
   echo "compiling $file"
   cargo run -q -- --no-run "$file" && succeed "$file"

@@ -592,7 +592,7 @@ impl<'src> Parser<'src> {
   fn parse_item_definition(
     &mut self,
   ) -> ParserResult<(String, Item)> {
-    eat_token!(self, KeywordFunc);
+    eat_token!(self, KeywordLet);
     let Spanned { thing, start, end } = self.get_token()?;
     match thing {
       TokenVariant::Ident(name) => {

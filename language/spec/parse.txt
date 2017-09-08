@@ -7,7 +7,7 @@ file =
   | item-definition*
 
 item-definition =
-  | `func` definition
+  | `let` definition
 
 definition-start =
   | ident parameter-list? declared-type?

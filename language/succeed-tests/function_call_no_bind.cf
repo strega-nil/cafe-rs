@@ -1,8 +1,0 @@
-func main(): s32 {
-  foo();
-  1
-}
-
-func foo(): s32 {
-  0
-}

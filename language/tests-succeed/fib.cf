@@ -1,8 +1,8 @@
-func main(): s32 {
+let main(): s32 {
   fib(15)
 }
 
-func fib(n: s32): s32 {
+let fib(n: s32): s32 {
   let neg_one: s32 = -1;
   if n <= 1 {
     n
