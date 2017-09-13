@@ -1,5 +1,4 @@
 NOTES:
-  - types and values use different namespaces
   - a specific token shall be between ``
   - the special token empty shall be the absence of a token
 
