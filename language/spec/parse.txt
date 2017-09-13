@@ -10,7 +10,7 @@ item-definition =
 
 definition-start =
   | ident parameter-list? declared-type?
-definition :=
+definition =
   | definition-start block
   | definition-start `=` expression `;`
 
