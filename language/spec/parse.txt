@@ -1,5 +1,4 @@
 NOTES:
-  - types and values use different namespaces
   - a specific token shall be between ``
   - the special token empty shall be the absence of a token
 
@@ -11,7 +10,7 @@ item-definition =
 
 definition-start =
   | ident parameter-list? declared-type?
-definition :=
+definition =
   | definition-start block
   | definition-start `=` expression `;`
 
