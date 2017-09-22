@@ -5,6 +5,56 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
 
+use std::ops::Index;
+
+pub struct Scope<'a, T: 'a> {
+  parent: Option<&'a Scope<'a, T>>,
+  current: Vec<(String, T)>,
+}
+
+impl<'a, T> Scope<'a, T> {
+  pub fn new() -> Self {
+    Self {
+      parent: None,
+      current: Vec::new(),
+    }
+  }
+
+  pub fn with_parent(parent: &'a Scope<'a, T>) -> Self {
+    Self {
+      parent: Some(parent),
+      current: Vec::new(),
+    }
+  }
+
+  pub fn get(&self, key: &str) -> Option<&T> {
+    for &(ref s, ref t) in &self.current {
+      if key == s { return Some(t) }
+    }
+    if let Some(parent) = self.parent {
+      parent.get(key)
+    } else {
+      None
+    }
+  }
+
+  pub fn insert(&mut self, key: String, val: T) {
+    self.current.push((key, val));
+  }
+}
+
+impl<'a, 'b, T> Index<&'b str> for Scope<'a, T> {
+  type Output = T;
+
+  fn index(&self, key: &'b str) -> &T {
+    if let Some(ret) = self.get(key) {
+      ret
+    } else {
+      panic!("Didn't find key: {}", key)
+    }
+  }
+}
+
 pub struct Arena<T> {
   arena: Mutex<(Vec<Vec<T>>, *mut Vec<T>)>,
 }

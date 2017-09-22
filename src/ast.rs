@@ -4,6 +4,8 @@ use std::fmt::{self, Display};
 use mir::{self, Mir, TypeError};
 use parse::{ItemVariant, Parser, ParserError,
             ParserErrorVariant, Spanned};
+use containers::Scope;
+
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub enum Category {
@@ -73,7 +75,7 @@ impl ExpressionVariant {
   fn ty<'ctx>(
     &self,
     funcs: &HashMap<String, mir::FunctionDecl>,
-    locals: &HashMap<String, mir::Reference>,
+    locals: &Scope<mir::Reference>,
     builder: &mir::FunctionBuilder<'ctx>,
     mir: &Mir<'ctx>,
   ) -> mir::Type<'ctx> {
@@ -93,7 +95,9 @@ impl ExpressionVariant {
       ExpressionVariant::Negative(ref e) => {
         e.ty(funcs, locals, builder, mir)
       }
-      ExpressionVariant::Block(ref b) => b.ty(funcs, locals, builder, mir),
+      ExpressionVariant::Block(ref b) => {
+        b.ty(funcs, locals, builder, mir)
+      }
       ExpressionVariant::IfElse { ref then, .. } => {
         then.ty(funcs, locals, builder, mir)
       }
@@ -135,7 +139,7 @@ impl ExpressionVariant {
     builder: &mut mir::FunctionBuilder<'ctx>,
     block: &mut mir::Block,
     funcs: &HashMap<String, mir::FunctionDecl>,
-    locals: &mut HashMap<String, mir::Reference>,
+    locals: &Scope<mir::Reference>,
   ) -> Result<(), TypeError<'ctx>> {
     let bool = mir.get_builtin_type(mir::BuiltinType::Bool);
     match *self {
@@ -310,7 +314,7 @@ impl Block_ {
   fn ty<'ctx>(
     &self,
     funcs: &HashMap<String, mir::FunctionDecl>,
-    locals: &HashMap<String, mir::Reference>,
+    locals: &Scope<mir::Reference>,
     builder: &mir::FunctionBuilder<'ctx>,
     mir: &Mir<'ctx>,
   ) -> mir::Type<'ctx> {
@@ -325,14 +329,15 @@ impl Block_ {
     builder: &mut mir::FunctionBuilder<'ctx>,
     block: &mut mir::Block,
     funcs: &HashMap<String, mir::FunctionDecl>,
-    locals: &mut HashMap<String, mir::Reference>,
+    locals: &Scope<mir::Reference>,
   ) -> Result<(), TypeError<'ctx>> {
+    let mut locals = Scope::with_parent(locals);
     for stmt in &self.statements {
       match **stmt {
         StatementVariant::Expr(ref e) => {
-          let ty = e.ty(funcs, locals, builder, mir);
+          let ty = e.ty(funcs, &locals, builder, mir);
           let tmp = builder.add_anonymous_local(ty);
-          e.to_mir(tmp, mir, builder, block, funcs, locals)?;
+          e.to_mir(tmp, mir, builder, block, funcs, &locals)?;
         }
         StatementVariant::Local {
           ref name,
@@ -351,7 +356,7 @@ impl Block_ {
             builder,
             block,
             funcs,
-            locals,
+            &locals,
           )?;
           locals.insert(name.clone(), var);
         }
@@ -363,7 +368,7 @@ impl Block_ {
       builder,
       block,
       funcs,
-      locals,
+      &locals,
     )
   }
 }
@@ -386,7 +391,7 @@ impl Function {
     let mut builder =
       mir.get_function_builder(decl);
 
-    let mut locals = HashMap::new();
+    let mut locals = Scope::new();
     for (i, param) in self.params.iter().enumerate() {
       locals
         .insert(param.0.clone(), builder.get_param(i as u32));
