@@ -10,6 +10,7 @@ mod runner;
 
 use ast::{Ast, StringlyType};
 use containers::ArenaMap;
+use parse::Location;
 
 use self::runner::Runner;
 
@@ -296,6 +297,8 @@ struct BlockData {
 
 #[derive(Debug)]
 pub enum TypeErrorVariant<'ctx> {
+    TypeNotFound(String),
+    BindingNotFound(String),
     Mismatched { lhs: Type<'ctx>, rhs: Type<'ctx> },
     NumberOfArgs {
         decl: FunctionDecl,
@@ -305,6 +308,16 @@ pub enum TypeErrorVariant<'ctx> {
 }
 // TODO(ubsan): should be spanned
 pub type TypeError<'ctx> = TypeErrorVariant<'ctx>;
+
+impl<'ctx> TypeError<'ctx> {
+    pub fn type_not_found(name: String, start: Location, end: Option<Location>) -> Self {
+        TypeErrorVariant::TypeNotFound(name)
+    }
+
+    pub fn binding_not_found(name: String, start: Location, end: Option<Location>) -> Self {
+        TypeErrorVariant::BindingNotFound(name)
+    }
+}
 
 impl BlockData {
     fn new() -> Self {
@@ -630,9 +643,12 @@ impl<'ctx> Mir<'ctx> {
         &self.funcs[decl.0].ty
     }
 
-    pub fn get_type(&self, stype: &StringlyType) -> Option<Type<'ctx>> {
+    pub fn get_type(&self, stype: &StringlyType) -> Result<Type<'ctx>, TypeError<'ctx>> {
         match *stype {
-            StringlyType::UserDefinedType(ref name) => self.types.get(name).map(|t| Type(t)),
+            StringlyType::UserDefinedType(ref name) => match self.types.get(name) {
+                Some(t) => Ok(Type(t)),
+                None => Err(TypeErrorVariant::TypeNotFound(name.to_owned())),
+            },
             _ => unimplemented!(),
         }
     }

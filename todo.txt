@@ -1,4 +1,7 @@
 - prettier error output
+  - make TypeError -> Spanned<TypeErrorVariant>
+  - make Value -> Spanned<ValueVariant>
+  - put type names into the AST, keep them out of the mir
 
 - checking to see if a number is in range
 
@@ -9,4 +12,3 @@
 - unary operators (+)
 
 - good typechecking
-  - should be a pass on ast, probably

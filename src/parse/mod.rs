@@ -7,8 +7,6 @@ use ast::{BinOp, Block, Block_, Expression, ExpressionVariant, FunctionValue, St
 use std::ops::{Deref, DerefMut};
 use std::str;
 
-// TODO(ubsan): figure out how to better parse optional comma
-
 enum Either<T, U> {
     Left(T),
     Right(U),

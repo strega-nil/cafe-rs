@@ -57,21 +57,29 @@ pub enum ExpressionVariant {
     },
     Log(Box<Expression>),
 }
-impl ExpressionVariant {
+impl Expression {
     fn ty<'ctx>(
         &self,
         funcs: &HashMap<String, mir::FunctionDecl>,
         locals: &Scope<mir::Reference>,
         builder: &mir::FunctionBuilder<'ctx>,
         mir: &Mir<'ctx>,
-    ) -> mir::Type<'ctx> {
-        match *self {
-            ExpressionVariant::UnitLiteral => mir.get_builtin_type(mir::BuiltinType::Unit),
+    ) -> Result<mir::Type<'ctx>, TypeError<'ctx>> {
+        match **self {
+            ExpressionVariant::UnitLiteral => Ok(mir.get_builtin_type(mir::BuiltinType::Unit)),
             ExpressionVariant::IntLiteral(_) => {
-                mir.get_builtin_type(mir::BuiltinType::SInt(mir::IntSize::I32))
+                Ok(mir.get_builtin_type(mir::BuiltinType::SInt(mir::IntSize::I32)))
             }
-            ExpressionVariant::BoolLiteral(_) => mir.get_builtin_type(mir::BuiltinType::Bool),
-            ExpressionVariant::Variable(ref name) => builder.get_binding_type(locals[name]),
+            ExpressionVariant::BoolLiteral(_) => Ok(mir.get_builtin_type(mir::BuiltinType::Bool)),
+            ExpressionVariant::Variable(ref name) => if let Some(local) = locals.get(name) {
+                Ok(builder.get_binding_type(*local))
+            } else {
+                Err(TypeError::binding_not_found(
+                    name.clone(),
+                    self.start,
+                    self.end,
+                ))
+            },
             ExpressionVariant::Negative(ref e) => e.ty(funcs, locals, builder, mir),
             ExpressionVariant::Block(ref b) => b.ty(funcs, locals, builder, mir),
             ExpressionVariant::IfElse { ref then, .. } => then.ty(funcs, locals, builder, mir),
@@ -82,12 +90,22 @@ impl ExpressionVariant {
             } => lhs.ty(funcs, locals, builder, mir),
             ExpressionVariant::BinOp {
                 op: BinOp::LessEq, ..
-            } => mir.get_builtin_type(mir::BuiltinType::Bool),
-            ExpressionVariant::Call { ref callee, .. } => mir.get_function_type(funcs[callee]).ret,
-            ExpressionVariant::Log(_) => mir.get_builtin_type(mir::BuiltinType::Unit),
+            } => Ok(mir.get_builtin_type(mir::BuiltinType::Bool)),
+            ExpressionVariant::Call { ref callee, .. } => if let Some(func) = funcs.get(callee) {
+                Ok(mir.get_function_type(*func).ret)
+            } else {
+                Err(TypeError::binding_not_found(
+                    callee.clone(),
+                    self.start,
+                    self.end,
+                ))
+            },
+            ExpressionVariant::Log(_) => Ok(mir.get_builtin_type(mir::BuiltinType::Unit)),
         }
     }
+}
 
+impl ExpressionVariant {
     fn mir_binop(op: BinOp, lhs: mir::Reference, rhs: mir::Reference) -> mir::Value {
         match op {
             BinOp::Plus => mir::Value::Add(lhs, rhs),
@@ -117,7 +135,7 @@ impl ExpressionVariant {
                 builder.add_stmt(mir, *block, dst, mir::Value::bool_lit(b))?
             }
             ExpressionVariant::Negative(ref e) => {
-                let ty = e.ty(funcs, locals, builder, mir);
+                let ty = e.ty(funcs, locals, builder, mir)?;
                 let var = builder.add_anonymous_local(ty);
                 e.to_mir(var, mir, builder, block, funcs, locals)?;
                 builder.add_stmt(mir, *block, dst, mir::Value::Negative(var))?
@@ -151,13 +169,13 @@ impl ExpressionVariant {
                 ref op,
             } => {
                 let lhs = {
-                    let ty = lhs.ty(funcs, locals, builder, mir);
+                    let ty = lhs.ty(funcs, locals, builder, mir)?;
                     let var = builder.add_anonymous_local(ty);
                     lhs.to_mir(var, mir, builder, block, funcs, locals)?;
                     var
                 };
                 let rhs = {
-                    let ty = rhs.ty(funcs, locals, builder, mir);
+                    let ty = rhs.ty(funcs, locals, builder, mir)?;
                     let var = builder.add_anonymous_local(ty);
                     rhs.to_mir(var, mir, builder, block, funcs, locals)?;
                     var
@@ -170,7 +188,7 @@ impl ExpressionVariant {
             } => {
                 let args = args.iter()
                     .map(|v| {
-                        let ty = v.ty(funcs, locals, builder, mir);
+                        let ty = v.ty(funcs, locals, builder, mir)?;
                         let var = builder.add_anonymous_local(ty);
                         v.to_mir(var, mir, builder, block, funcs, locals)?;
                         Ok(var)
@@ -183,7 +201,7 @@ impl ExpressionVariant {
                 }
             }
             ExpressionVariant::Log(ref arg) => {
-                let ty = arg.ty(funcs, locals, builder, mir);
+                let ty = arg.ty(funcs, locals, builder, mir)?;
                 let var = builder.add_anonymous_local(ty);
                 arg.to_mir(var, mir, builder, block, funcs, locals)?;
                 builder.add_stmt(mir, *block, dst, mir::Value::Log(var))?;
@@ -220,7 +238,7 @@ impl Block_ {
         locals: &Scope<mir::Reference>,
         builder: &mir::FunctionBuilder<'ctx>,
         mir: &Mir<'ctx>,
-    ) -> mir::Type<'ctx> {
+    ) -> Result<mir::Type<'ctx>, TypeError<'ctx>> {
         // NOTE(ubsan): this will be different when we get void
         self.expr.ty(funcs, locals, builder, mir)
     }
@@ -238,7 +256,7 @@ impl Block_ {
         for stmt in &self.statements {
             match **stmt {
                 StatementVariant::Expr(ref e) => {
-                    let ty = e.ty(funcs, &locals, builder, mir);
+                    let ty = e.ty(funcs, &locals, builder, mir)?;
                     let tmp = builder.add_anonymous_local(ty);
                     e.to_mir(tmp, mir, builder, block, funcs, &locals)?;
                 }
@@ -248,9 +266,9 @@ impl Block_ {
                     ref initializer,
                 } => {
                     let ty = if let Some(ref ty) = *ty {
-                        mir.get_type(ty).unwrap()
+                        mir.get_type(ty)?
                     } else {
-                        initializer.ty(funcs, &locals, &builder, mir)
+                        initializer.ty(funcs, &locals, &builder, mir)?
                     };
                     let var = builder.add_local(name.clone(), ty);
                     initializer.to_mir(var, mir, builder, block, funcs, &locals)?;
