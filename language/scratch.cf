@@ -1,4 +1,45 @@
 let main(): s32 {
-  { let x = 0; () };
-  x
+  foo(-10)
+}
+
+let not(x: bool): bool {
+  if x {
+    false
+  } else {
+    true
+  }
+}
+
+let and(x: bool, y: bool): bool {
+  if x {
+    if y {
+      true
+    } else {
+      false
+    }
+  } else {
+    false
+  }
+}
+
+let lt(x: s32, y: s32): bool {
+  and(x <= y, not(y <= x))
+}
+
+let gt(x: s32, y: s32): bool {
+  not(x <= y)
+}
+
+let eq(x: s32, y: s32): bool {
+  and(x <= y, y <= x)
+}
+
+let foo(n: s32): s32 {
+  if lt(n, 0) {
+    -1
+  } else if gt(n, 0) {
+    1
+  } else {
+    0
+  }
 }

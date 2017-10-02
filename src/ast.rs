@@ -512,7 +512,7 @@ impl Display for Ast {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for (name, func) in &self.funcs {
             let ref func = func.thing;
-            write!(f, "func {}(", name)?;
+            write!(f, "let {}(", name)?;
             if !func.params.is_empty() {
                 for p in &func.params[..func.params.len() - 1] {
                     let (ref name, ref ty) = *p;
@@ -523,6 +523,7 @@ impl Display for Ast {
             }
             write!(f, "): {} ", func.ret_ty)?;
             func.blk.fmt(f, 0)?;
+            writeln!(f, "")?;
         }
         Ok(())
     }

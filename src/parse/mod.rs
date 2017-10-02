@@ -276,20 +276,34 @@ impl<'src> Parser<'src> {
                 Spanned::new(ExpressionVariant::BoolLiteral(false), start, end)
             }
             TokenVariant::KeywordIf => {
-                let cond = self.parse_expr()?;
-                let then = self.parse_block()?;
-                eat_token!(self, KeywordElse);
-                let els = self.parse_block()?;
-                let end = els.end;
-                Spanned::new(
-                    ExpressionVariant::IfElse {
-                        cond: Box::new(cond),
-                        then: Box::new(then),
-                        els: Box::new(els),
-                    },
-                    start,
-                    end,
-                )
+                fn parse(this: &mut Parser, start: Location) -> ParserResult<Expression> {
+                    let cond = this.parse_expr()?;
+                    let then = this.parse_block()?;
+                    eat_token!(this, KeywordElse);
+                    let els = if let Some(_) = maybe_eat_token!(this, KeywordIf) {
+                        let expr = parse(this, start)?;
+                        let start = expr.start;
+                        let end = expr.end;
+                        Spanned::new(
+                            Block_ { statements: vec![], expr },
+                            start,
+                            end,
+                        )
+                    } else {
+                        this.parse_block()?
+                    };
+                    let end = els.end;
+                    Ok(Spanned::new(
+                        ExpressionVariant::IfElse {
+                            cond: Box::new(cond),
+                            then: Box::new(then),
+                            els: Box::new(els),
+                        },
+                        start,
+                        end,
+                    ))
+                };
+                parse(self, start)?
             }
             TokenVariant::KeywordElse => {
                 return unexpected_token!(TokenVariant::KeywordElse, Expr, start, end,);
