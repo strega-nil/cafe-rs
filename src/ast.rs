@@ -60,19 +60,20 @@ pub enum ExpressionVariant {
 impl Expression {
     fn ty<'ctx>(
         &self,
+        tys: &Types<'ctx>,
         funcs: &HashMap<String, mir::FunctionDecl>,
-        locals: &Scope<mir::Reference>,
+        locals: &Scope<(mir::Type<'ctx>, mir::Reference)>,
         builder: &mir::FunctionBuilder<'ctx>,
         mir: &Mir<'ctx>,
     ) -> Result<mir::Type<'ctx>, TypeError<'ctx>> {
         match **self {
             ExpressionVariant::UnitLiteral => Ok(mir.get_builtin_type(mir::BuiltinType::Unit)),
+            ExpressionVariant::BoolLiteral(_) => Ok(mir.get_builtin_type(mir::BuiltinType::Bool)),
             ExpressionVariant::IntLiteral(_) => {
                 Ok(mir.get_builtin_type(mir::BuiltinType::SInt(mir::IntSize::I32)))
             }
-            ExpressionVariant::BoolLiteral(_) => Ok(mir.get_builtin_type(mir::BuiltinType::Bool)),
             ExpressionVariant::Variable(ref name) => if let Some(local) = locals.get(name) {
-                Ok(builder.get_binding_type(*local))
+                Ok(local.0)
             } else {
                 Err(TypeError::binding_not_found(
                     name.clone(),
@@ -80,14 +81,14 @@ impl Expression {
                     self.end,
                 ))
             },
-            ExpressionVariant::Negative(ref e) => e.ty(funcs, locals, builder, mir),
-            ExpressionVariant::Block(ref b) => b.ty(funcs, locals, builder, mir),
-            ExpressionVariant::IfElse { ref then, .. } => then.ty(funcs, locals, builder, mir),
+            ExpressionVariant::Negative(ref e) => e.ty(tys, funcs, locals, builder, mir),
+            ExpressionVariant::Block(ref b) => b.ty(tys, funcs, locals, builder, mir),
+            ExpressionVariant::IfElse { ref then, .. } => then.ty(tys, funcs, locals, builder, mir),
             ExpressionVariant::BinOp {
                 op: BinOp::Plus,
                 ref lhs,
                 ..
-            } => lhs.ty(funcs, locals, builder, mir),
+            } => lhs.ty(tys, funcs, locals, builder, mir),
             ExpressionVariant::BinOp {
                 op: BinOp::LessEq, ..
             } => Ok(mir.get_builtin_type(mir::BuiltinType::Bool)),
@@ -117,11 +118,12 @@ impl ExpressionVariant {
         &self,
         dst: mir::Reference,
         // TODO(ubsan): this state should probably all be in a struct
+        tys: &Types<'ctx>,
         mir: &mut Mir<'ctx>,
         builder: &mut mir::FunctionBuilder<'ctx>,
         block: &mut mir::Block,
         funcs: &HashMap<String, mir::FunctionDecl>,
-        locals: &Scope<mir::Reference>,
+        locals: &Scope<(mir::Type<'ctx>, mir::Reference)>,
     ) -> Result<(), TypeError<'ctx>> {
         let bool = mir.get_builtin_type(mir::BuiltinType::Bool);
         match *self {
@@ -135,18 +137,18 @@ impl ExpressionVariant {
                 builder.add_stmt(mir, *block, dst, mir::Value::bool_lit(b))?
             }
             ExpressionVariant::Negative(ref e) => {
-                let ty = e.ty(funcs, locals, builder, mir)?;
+                let ty = e.ty(tys, funcs, locals, builder, mir)?;
                 let var = builder.add_anonymous_local(ty);
-                e.to_mir(var, mir, builder, block, funcs, locals)?;
+                e.to_mir(var, tys, mir, builder, block, funcs, locals)?;
                 builder.add_stmt(mir, *block, dst, mir::Value::Negative(var))?
             }
             ExpressionVariant::Variable(ref name) => if let Some(&loc) = locals.get(name) {
-                builder.add_stmt(mir, *block, dst, mir::Value::Reference(loc))?;
+                builder.add_stmt(mir, *block, dst, mir::Value::Reference(loc.1))?;
             } else {
                 panic!("no `{}` name found", name);
             },
             ExpressionVariant::Block(ref blk) => {
-                blk.to_mir(dst, mir, builder, block, funcs, locals)?;
+                blk.to_mir(dst, tys, mir, builder, block, funcs, locals)?;
             }
             ExpressionVariant::IfElse {
                 ref cond,
@@ -155,12 +157,12 @@ impl ExpressionVariant {
             } => {
                 let cond = {
                     let var = builder.add_anonymous_local(bool);
-                    cond.to_mir(var, mir, builder, block, funcs, locals)?;
+                    cond.to_mir(var, tys, mir, builder, block, funcs, locals)?;
                     var
                 };
                 let (mut then_bb, mut els_bb, final_bb) = builder.term_if_else(*block, cond);
-                then.to_mir(dst, mir, builder, &mut then_bb, funcs, locals)?;
-                els.to_mir(dst, mir, builder, &mut els_bb, funcs, locals)?;
+                then.to_mir(dst, tys, mir, builder, &mut then_bb, funcs, locals)?;
+                els.to_mir(dst, tys, mir, builder, &mut els_bb, funcs, locals)?;
                 *block = final_bb;
             }
             ExpressionVariant::BinOp {
@@ -169,15 +171,15 @@ impl ExpressionVariant {
                 ref op,
             } => {
                 let lhs = {
-                    let ty = lhs.ty(funcs, locals, builder, mir)?;
+                    let ty = lhs.ty(tys, funcs, locals, builder, mir)?;
                     let var = builder.add_anonymous_local(ty);
-                    lhs.to_mir(var, mir, builder, block, funcs, locals)?;
+                    lhs.to_mir(var, tys, mir, builder, block, funcs, locals)?;
                     var
                 };
                 let rhs = {
-                    let ty = rhs.ty(funcs, locals, builder, mir)?;
+                    let ty = rhs.ty(tys, funcs, locals, builder, mir)?;
                     let var = builder.add_anonymous_local(ty);
-                    rhs.to_mir(var, mir, builder, block, funcs, locals)?;
+                    rhs.to_mir(var, tys, mir, builder, block, funcs, locals)?;
                     var
                 };
                 builder.add_stmt(mir, *block, dst, Self::mir_binop(*op, lhs, rhs))?;
@@ -188,9 +190,9 @@ impl ExpressionVariant {
             } => {
                 let args = args.iter()
                     .map(|v| {
-                        let ty = v.ty(funcs, locals, builder, mir)?;
+                        let ty = v.ty(tys, funcs, locals, builder, mir)?;
                         let var = builder.add_anonymous_local(ty);
-                        v.to_mir(var, mir, builder, block, funcs, locals)?;
+                        v.to_mir(var, tys, mir, builder, block, funcs, locals)?;
                         Ok(var)
                     })
                     .collect::<Result<_, _>>()?;
@@ -201,9 +203,9 @@ impl ExpressionVariant {
                 }
             }
             ExpressionVariant::Log(ref arg) => {
-                let ty = arg.ty(funcs, locals, builder, mir)?;
+                let ty = arg.ty(tys, funcs, locals, builder, mir)?;
                 let var = builder.add_anonymous_local(ty);
-                arg.to_mir(var, mir, builder, block, funcs, locals)?;
+                arg.to_mir(var, tys, mir, builder, block, funcs, locals)?;
                 builder.add_stmt(mir, *block, dst, mir::Value::Log(var))?;
             }
         }
@@ -234,31 +236,33 @@ pub type Block = Spanned<Block_>;
 impl Block_ {
     fn ty<'ctx>(
         &self,
+        tys: &Types<'ctx>,
         funcs: &HashMap<String, mir::FunctionDecl>,
-        locals: &Scope<mir::Reference>,
+        locals: &Scope<(mir::Type<'ctx>, mir::Reference)>,
         builder: &mir::FunctionBuilder<'ctx>,
         mir: &Mir<'ctx>,
     ) -> Result<mir::Type<'ctx>, TypeError<'ctx>> {
         // NOTE(ubsan): this will be different when we get void
-        self.expr.ty(funcs, locals, builder, mir)
+        self.expr.ty(tys, funcs, locals, builder, mir)
     }
     fn to_mir<'ctx>(
         &self,
         dst: mir::Reference,
         // TODO(ubsan): this state should probably all be in a struct
+        tys: &Types<'ctx>,
         mir: &mut Mir<'ctx>,
         builder: &mut mir::FunctionBuilder<'ctx>,
         block: &mut mir::Block,
         funcs: &HashMap<String, mir::FunctionDecl>,
-        locals: &Scope<mir::Reference>,
+        locals: &Scope<(mir::Type<'ctx>, mir::Reference)>,
     ) -> Result<(), TypeError<'ctx>> {
         let mut locals = Scope::with_parent(locals);
         for stmt in &self.statements {
             match **stmt {
                 StatementVariant::Expr(ref e) => {
-                    let ty = e.ty(funcs, &locals, builder, mir)?;
+                    let ty = e.ty(tys, funcs, &locals, builder, mir)?;
                     let tmp = builder.add_anonymous_local(ty);
-                    e.to_mir(tmp, mir, builder, block, funcs, &locals)?;
+                    e.to_mir(tmp, tys, mir, builder, block, funcs, &locals)?;
                 }
                 StatementVariant::Local {
                     ref name,
@@ -266,17 +270,18 @@ impl Block_ {
                     ref initializer,
                 } => {
                     let ty = if let Some(ref ty) = *ty {
-                        mir.get_type(ty)?
+                        tys.get(ty).expect("no type found here aflksdjfla")
                     } else {
-                        initializer.ty(funcs, &locals, &builder, mir)?
+                        initializer.ty(tys, funcs, &locals, &builder, mir)?
                     };
                     let var = builder.add_local(name.clone(), ty);
-                    initializer.to_mir(var, mir, builder, block, funcs, &locals)?;
-                    locals.insert(name.clone(), var);
+                    initializer.to_mir(var, tys, mir, builder, block, funcs, &locals)?;
+                    locals.insert(name.clone(), (ty, var));
                 }
             };
         }
-        self.expr.to_mir(dst, mir, builder, block, funcs, &locals)
+        self.expr
+            .to_mir(dst, tys, mir, builder, block, funcs, &locals)
     }
 }
 
@@ -291,6 +296,7 @@ pub type Function = Spanned<FunctionValue>;
 impl Function {
     fn build_mir<'ctx>(
         &self,
+        tys: &Types<'ctx>,
         decl: mir::FunctionDecl,
         funcs: &HashMap<String, mir::FunctionDecl>,
         mir: &mut Mir<'ctx>,
@@ -299,13 +305,16 @@ impl Function {
 
         let mut locals = Scope::new();
         for (i, param) in self.params.iter().enumerate() {
-            locals.insert(param.0.clone(), builder.get_param(i as u32));
+            locals.insert(
+                param.0.clone(),
+                (tys.get(&param.1).unwrap(), builder.get_param(i as u32)),
+            );
         }
 
         let mut block = builder.entrance();
         let ret = mir::Reference::ret();
         self.blk
-            .to_mir(ret, mir, &mut builder, &mut block, funcs, &mut locals)?;
+            .to_mir(ret, tys, mir, &mut builder, &mut block, funcs, &mut locals)?;
         Ok(mir.add_function_definition(builder))
     }
 }
@@ -374,20 +383,45 @@ impl Ast {
     }
 }
 
+struct Types<'ctx> {
+    inner: HashMap<String, mir::Type<'ctx>>,
+}
+
+impl<'ctx> Types<'ctx> {
+    fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, name: String, ty: mir::Type<'ctx>) {
+        self.inner.insert(name, ty);
+    }
+    pub fn get(&self, name: &StringlyType) -> Option<mir::Type<'ctx>> {
+        match *name {
+            StringlyType::UserDefinedType(ref name) => self.inner.get(name).map(|x| *x),
+            StringlyType::Unit => self.inner.get("unit").map(|x| *x),
+        }
+    }
+}
+
 impl Ast {
     pub fn build_mir<'ctx>(&mut self, mir: &mut Mir<'ctx>) -> Result<(), TypeError<'ctx>> {
-        Self::prelude_types(mir);
         let mut mir_funcs: HashMap<String, mir::FunctionDecl> = HashMap::new();
+        let mut tys = Types::new();
+
+        Self::prelude_types(mir, &mut tys);
 
         for (name, func) in &self.funcs {
             let params = {
                 let tmp = func.params
                     .iter()
-                    .map(|&(_, ref ty)| mir.get_type(ty).unwrap())
+                    // TODO(ubsan): should return a TypeError, not unwrap
+                    .map(|&(_, ref ty)| tys.get(ty).unwrap())
                     .collect();
                 mir::TypeList::from_existing(tmp)
             };
-            let ret = mir.get_type(&func.ret_ty).unwrap();
+            let ret = tys.get(&func.ret_ty).unwrap();
 
             let decl =
                 mir.add_function_decl(Some(name.to_owned()), mir::FunctionType { ret, params });
@@ -395,15 +429,17 @@ impl Ast {
         }
         for (name, func) in &self.funcs {
             let decl = mir_funcs[name];
-            func.build_mir(decl, &mir_funcs, mir)?;
+            func.build_mir(&tys, decl, &mir_funcs, mir)?;
         }
         Ok(())
     }
 
-    fn prelude_types(mir: &Mir) {
-        mir.insert_type(Some(String::from("s32")), mir::TypeVariant::s32());
-        mir.insert_type(Some(String::from("bool")), mir::TypeVariant::bool());
-        mir.insert_type(Some(String::from("unit")), mir::TypeVariant::unit());
+    fn prelude_types<'ctx>(mir: &Mir<'ctx>, tys: &mut Types<'ctx>) {
+        use mir::BuiltinType::*;
+        use mir::IntSize::*;
+        tys.insert("unit".to_owned(), mir.get_builtin_type(Unit));
+        tys.insert("bool".to_owned(), mir.get_builtin_type(Bool));
+        tys.insert("s32".to_owned(), mir.get_builtin_type(SInt(I32)));
     }
 }
 

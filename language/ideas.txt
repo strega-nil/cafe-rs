@@ -12,6 +12,7 @@
 - just cool
   - http://www.ccs.neu.edu/home/amal/papers/funtal.pdf
   - http://www.ccs.neu.edu/home/amal/papers/linking-types.pdf
+- maybe `def` instead of `let` at item-level?
 
 - syntax:
 

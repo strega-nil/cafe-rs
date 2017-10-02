@@ -8,8 +8,8 @@
 
 mod runner;
 
-use ast::{Ast, StringlyType};
-use containers::ArenaMap;
+use ast::Ast;
+use containers::Arena;
 use parse::Location;
 
 use self::runner::Runner;
@@ -310,11 +310,11 @@ pub enum TypeErrorVariant<'ctx> {
 pub type TypeError<'ctx> = TypeErrorVariant<'ctx>;
 
 impl<'ctx> TypeError<'ctx> {
-    pub fn type_not_found(name: String, start: Location, end: Option<Location>) -> Self {
+    pub fn type_not_found(name: String, _start: Location, _end: Option<Location>) -> Self {
         TypeErrorVariant::TypeNotFound(name)
     }
 
-    pub fn binding_not_found(name: String, start: Location, end: Option<Location>) -> Self {
+    pub fn binding_not_found(name: String, _start: Location, _end: Option<Location>) -> Self {
         TypeErrorVariant::BindingNotFound(name)
     }
 }
@@ -451,10 +451,6 @@ impl<'ctx> FunctionBuilder<'ctx> {
     pub fn get_param(&self, n: u32) -> Reference {
         Reference::param(n)
     }
-
-    pub fn get_binding_type(&self, loc: Reference) -> Type<'ctx> {
-        self.bindings[loc.0 as usize].ty
-    }
 }
 
 // modification
@@ -548,13 +544,13 @@ pub struct FunctionDecl(usize);
 // use paths instead of names?
 
 pub struct MirCtxt<'a> {
-    types: ArenaMap<String, TypeVariant<'a>>,
+    types: Arena<TypeVariant<'a>>,
 }
 
 impl<'a> MirCtxt<'a> {
     pub fn new() -> Self {
         MirCtxt {
-            types: ArenaMap::new(),
+            types: Arena::new(),
         }
     }
 }
@@ -571,17 +567,31 @@ struct Function<'ctx> {
     value: Option<FunctionValue<'ctx>>,
 }
 
+pub struct BuiltinTypes<'ctx> {
+    unit_ty: Type<'ctx>,
+    bool_ty: Type<'ctx>,
+    s32_ty: Type<'ctx>,
+}
+
 pub struct Mir<'ctx> {
     funcs: Vec<Function<'ctx>>,
-    types: &'ctx ArenaMap<String, TypeVariant<'ctx>>,
+    types: &'ctx Arena<TypeVariant<'ctx>>,
+    builtin_types: BuiltinTypes<'ctx>,
 }
 
 // creation and run
 impl<'ctx> Mir<'ctx> {
     pub fn new(ctx: &'ctx MirCtxt<'ctx>, mut ast: Ast) -> Result<Self, TypeError<'ctx>> {
+        let types = &ctx.types;
+        let builtin_types = BuiltinTypes {
+            unit_ty: Type(types.push(TypeVariant::unit())),
+            bool_ty: Type(types.push(TypeVariant::bool())),
+            s32_ty: Type(types.push(TypeVariant::bool())),
+        };
         let mut self_: Mir<'ctx> = Mir {
             funcs: vec![],
-            types: &ctx.types,
+            types,
+            builtin_types,
         };
 
         ast.build_mir(&mut self_)?;
@@ -631,37 +641,19 @@ impl<'ctx> Mir<'ctx> {
 
 // types
 impl<'ctx> Mir<'ctx> {
-    pub fn insert_type(&self, name: Option<String>, ty: TypeVariant<'ctx>) -> Type<'ctx> {
-        if let Some(name) = name {
-            Type(self.types.insert(name, ty))
-        } else {
-            Type(self.types.insert_anonymous(ty))
-        }
+    pub fn insert_type(&self, ty: TypeVariant<'ctx>) -> Type<'ctx> {
+        Type(self.types.push(ty))
     }
 
     pub fn get_function_type(&self, decl: FunctionDecl) -> &FunctionType<'ctx> {
         &self.funcs[decl.0].ty
     }
 
-    pub fn get_type(&self, stype: &StringlyType) -> Result<Type<'ctx>, TypeError<'ctx>> {
-        match *stype {
-            StringlyType::UserDefinedType(ref name) => match self.types.get(name) {
-                Some(t) => Ok(Type(t)),
-                None => Err(TypeErrorVariant::TypeNotFound(name.to_owned())),
-            },
-            _ => unimplemented!(),
-        }
-    }
-
     pub fn get_builtin_type(&self, ty: BuiltinType) -> Type<'ctx> {
-        let name = match ty {
-            BuiltinType::SInt(IntSize::I32) => "s32",
-            BuiltinType::Bool => "bool",
-            BuiltinType::Unit => "unit",
-        };
-        match self.types.get(name) {
-            Some(t) => Type(t),
-            None => panic!("the ast implementor forgot to add `{}` to mir types", name,),
+        match ty {
+            BuiltinType::Unit => self.builtin_types.unit_ty,
+            BuiltinType::Bool => self.builtin_types.bool_ty,
+            BuiltinType::SInt(IntSize::I32) => self.builtin_types.s32_ty,
         }
     }
 }
@@ -677,15 +669,15 @@ impl<'ctx> Mir<'ctx> {
             print!("{}_{}", name, r.0);
         }
 
-        for (name, ty) in &*self.types.hashmap() {
-            print!("data {} = ", name);
-            match *unsafe { &**ty } {
+        self.types.call_on_all(|el| {
+            print!("type (unknown) = ");
+            match *el {
                 TypeVariant::Builtin(_) => {
                     println!("<builtin>;");
                 }
                 TypeVariant::__LifetimeHolder(_) => unreachable!(),
             }
-        }
+        });
         for &Function {
             ref ty,
             ref name,
