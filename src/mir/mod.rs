@@ -586,7 +586,7 @@ impl<'ctx> Mir<'ctx> {
         let builtin_types = BuiltinTypes {
             unit_ty: Type(types.push(TypeVariant::unit())),
             bool_ty: Type(types.push(TypeVariant::bool())),
-            s32_ty: Type(types.push(TypeVariant::bool())),
+            s32_ty: Type(types.push(TypeVariant::s32())),
         };
         let mut self_: Mir<'ctx> = Mir {
             funcs: vec![],
@@ -641,9 +641,11 @@ impl<'ctx> Mir<'ctx> {
 
 // types
 impl<'ctx> Mir<'ctx> {
+    /*
     pub fn insert_type(&self, ty: TypeVariant<'ctx>) -> Type<'ctx> {
         Type(self.types.push(ty))
     }
+    */
 
     pub fn get_function_type(&self, decl: FunctionDecl) -> &FunctionType<'ctx> {
         &self.funcs[decl.0].ty

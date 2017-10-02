@@ -270,7 +270,16 @@ impl Block_ {
                     ref initializer,
                 } => {
                     let ty = if let Some(ref ty) = *ty {
-                        tys.get(ty).expect("no type found here aflksdjfla")
+                        match tys.get(ty) {
+                            Some(mir_ty) => mir_ty,
+                            None => {
+                                let str_ty = match *ty {
+                                    StringlyType::UserDefinedType(ref s) => s.clone(),
+                                    StringlyType::Unit => unreachable!(),
+                                };
+                                return Err(TypeError::type_not_found(str_ty, stmt.start, stmt.end));
+                            }
+                        }
                     } else {
                         initializer.ty(tys, funcs, &locals, &builder, mir)?
                     };
