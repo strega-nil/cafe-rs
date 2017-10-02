@@ -5,22 +5,9 @@ use containers::Scope;
 use mir::{self, Mir, TypeError};
 use parse::{ItemVariant, Parser, ParserError, ParserErrorVariant, Spanned};
 
-mod ty;
-
-#[derive(Clone, Debug)]
-#[allow(dead_code)]
-pub enum Category {
-    Raw,
-    Shared,
-    Mut,
-    Own,
-}
-
 // user defined types will be strings
 #[derive(Clone, Debug)]
 pub enum StringlyType {
-    #[allow(dead_code)] Reference(Category, Box<StringlyType>),
-    #[allow(dead_code)] Pointer(Category, Box<StringlyType>),
     UserDefinedType(String),
     Unit,
 }
@@ -135,16 +122,11 @@ impl ExpressionVariant {
                 e.to_mir(var, mir, builder, block, funcs, locals)?;
                 builder.add_stmt(mir, *block, dst, mir::Value::Negative(var))?
             }
-            ExpressionVariant::Variable(ref name) => {
-                // NOTE(ubsan): typeck is currently in the mir pass
-                // once we put it into a HIR or AST pass, it will catch
-                // this
-                if let Some(&loc) = locals.get(name) {
-                    builder.add_stmt(mir, *block, dst, mir::Value::Reference(loc))?;
-                } else {
-                    panic!("no `{}` name found", name);
-                }
-            }
+            ExpressionVariant::Variable(ref name) => if let Some(&loc) = locals.get(name) {
+                builder.add_stmt(mir, *block, dst, mir::Value::Reference(loc))?;
+            } else {
+                panic!("no `{}` name found", name);
+            },
             ExpressionVariant::Block(ref blk) => {
                 blk.to_mir(dst, mir, builder, block, funcs, locals)?;
             }
@@ -508,7 +490,6 @@ impl StatementVariant {
         }
     }
 }
-
 
 
 impl Block_ {

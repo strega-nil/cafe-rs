@@ -36,9 +36,9 @@ pub enum IntSize {
     //I8,
     //I16,
     I32,
-  //I64,
-  // ISize,
-  // I128,
+    //I64,
+    // ISize,
+    // I128,
 }
 impl IntSize {
     fn size(self) -> u32 {
@@ -72,7 +72,7 @@ impl BuiltinType {
         match *self {
             BuiltinType::SInt(sz) => sz.size(),
             BuiltinType::Bool => 1,
-            BuiltinType::Unit => 0,
+            BuiltinType::Unit => 1,
         }
     }
 }
