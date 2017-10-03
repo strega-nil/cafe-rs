@@ -1,5 +1,7 @@
 use super::*;
 
+use parse::{Location, Spanned};
+
 #[derive(Copy, Clone, Debug)]
 pub struct Reference(pub(super) u32);
 
@@ -59,6 +61,8 @@ impl Value {
         &self,
         builder: &FunctionBuilder<'ctx>,
         mir: &Mir<'ctx>,
+        start: Location,
+        end: Option<Location>,
     ) -> Result<Type<'ctx>, TypeError<'ctx>> {
         match *self {
             Value::Literal(ref lit) => Ok(lit.ty(mir)),
@@ -73,9 +77,13 @@ impl Value {
                 let ty_lhs = builder.bindings[lhs.0 as usize].ty;
                 let ty_rhs = builder.bindings[rhs.0 as usize].ty;
                 if ty_rhs != ty_lhs {
-                    Err(TypeErrorVariant::Mismatched {
-                        lhs: ty_lhs,
-                        rhs: ty_rhs,
+                    Err(Spanned {
+                        thing: TypeErrorVariant::Mismatched {
+                            lhs: ty_lhs,
+                            rhs: ty_rhs,
+                        },
+                        start,
+                        end,
                     })
                 } else {
                     let s32 = mir.get_builtin_type(BuiltinType::SInt(IntSize::I32));
@@ -87,9 +95,13 @@ impl Value {
                 let ty_lhs = builder.bindings[lhs.0 as usize].ty;
                 let ty_rhs = builder.bindings[rhs.0 as usize].ty;
                 if ty_rhs != ty_lhs {
-                    Err(TypeErrorVariant::Mismatched {
-                        lhs: ty_lhs,
-                        rhs: ty_rhs,
+                    Err(Spanned {
+                        thing: TypeErrorVariant::Mismatched {
+                            lhs: ty_lhs,
+                            rhs: ty_rhs,
+                        },
+                        start,
+                        end,
                     })
                 } else {
                     Ok(mir.get_builtin_type(BuiltinType::Bool))
@@ -102,19 +114,30 @@ impl Value {
                 let callee = &mir.funcs[decl.0];
                 let params = &callee.ty.params;
                 if args.len() != params.tys.len() {
-                    return Err(TypeErrorVariant::NumberOfArgs {
-                        decl: *decl,
-                        args_expected: callee.ty.params.tys.len() as u32,
-                        args_found: args.len() as u32,
+                    return Err(Spanned {
+                        thing: TypeErrorVariant::NumberOfArgs {
+                            name: mir.funcs[decl.0]
+                                .name
+                                .clone()
+                                .unwrap_or("<anonymous function>".to_owned()),
+                            args_expected: callee.ty.params.tys.len() as u32,
+                            args_found: args.len() as u32,
+                        },
+                        start,
+                        end,
                     });
                 }
 
                 for (arg, parm) in args.iter().zip(params.tys.iter()) {
                     let arg_ty = builder.bindings[arg.0 as usize].ty;
                     if arg_ty != *parm {
-                        return Err(TypeErrorVariant::Mismatched {
-                            lhs: *parm,
-                            rhs: arg_ty,
+                        return Err(Spanned {
+                            thing: TypeErrorVariant::Mismatched {
+                                lhs: *parm,
+                                rhs: arg_ty,
+                            },
+                            start,
+                            end,
                         });
                     }
                 }

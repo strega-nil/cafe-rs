@@ -1,7 +1,61 @@
-use parse::Location;
-use super::{align, FunctionDecl};
+use parse::{Location, Spanned};
+use super::align;
 
 use std::{iter, slice};
+use std::fmt::{self, Display};
+
+#[derive(Debug)]
+pub enum TypeErrorVariant<'ctx> {
+    TypeNotFound(String),
+    BindingNotFound(String),
+    Mismatched { lhs: Type<'ctx>, rhs: Type<'ctx> },
+    NumberOfArgs {
+        name: String,
+        args_expected: u32,
+        args_found: u32,
+    },
+}
+
+impl<'ctx> Display for TypeErrorVariant<'ctx> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::TypeErrorVariant::*;
+        match *self {
+            TypeNotFound(ref s) => write!(f, "could not find type '{}'", s),
+            BindingNotFound(ref s) => write!(f, "could not find name '{}'", s),
+            Mismatched { lhs, rhs } => write!(f, "lhs ({}) != rhs ({})", lhs.name(), rhs.name()),
+            NumberOfArgs {
+                ref name,
+                ref args_expected,
+                ref args_found,
+            } => write!(
+                f,
+                "function '{}' takes {} arguments, but {} arguments were passed",
+                name,
+                args_expected,
+                args_found
+            ),
+        }
+    }
+}
+pub type TypeError<'ctx> = Spanned<TypeErrorVariant<'ctx>>;
+
+impl<'ctx> TypeError<'ctx> {
+    pub fn type_not_found(name: String, start: Location, end: Option<Location>) -> Self {
+        Spanned {
+            thing: TypeErrorVariant::TypeNotFound(name),
+            start,
+            end,
+        }
+    }
+
+    pub fn binding_not_found(name: String, start: Location, end: Option<Location>) -> Self {
+        Spanned {
+            thing: TypeErrorVariant::BindingNotFound(name),
+            start,
+            end,
+        }
+    }
+}
 
 #[derive(Copy, Clone, Debug)]
 pub enum IntSize {
@@ -177,29 +231,5 @@ impl<'a, 'ctx> IntoIterator for &'a TypeList<'ctx> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.tys.iter().cloned()
-    }
-}
-
-#[derive(Debug)]
-pub enum TypeErrorVariant<'ctx> {
-    TypeNotFound(String),
-    BindingNotFound(String),
-    Mismatched { lhs: Type<'ctx>, rhs: Type<'ctx> },
-    NumberOfArgs {
-        decl: FunctionDecl,
-        args_expected: u32,
-        args_found: u32,
-    },
-}
-// TODO(ubsan): should be spanned
-pub type TypeError<'ctx> = TypeErrorVariant<'ctx>;
-
-impl<'ctx> TypeError<'ctx> {
-    pub fn type_not_found(name: String, _start: Location, _end: Option<Location>) -> Self {
-        TypeErrorVariant::TypeNotFound(name)
-    }
-
-    pub fn binding_not_found(name: String, _start: Location, _end: Option<Location>) -> Self {
-        TypeErrorVariant::BindingNotFound(name)
     }
 }

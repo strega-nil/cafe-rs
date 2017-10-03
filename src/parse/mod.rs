@@ -6,6 +6,7 @@ use ast::{BinOp, Block, Block_, Expression, ExpressionVariant, FunctionValue, St
 
 use std::ops::{Deref, DerefMut};
 use std::str;
+use std::fmt::{self, Display};
 
 enum Either<T, U> {
     Left(T),
@@ -39,6 +40,12 @@ impl Location {
     }
 }
 
+impl Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "({}:{})", self.line, self.column)
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct Spanned<T> {
     pub thing: T,
@@ -61,6 +68,16 @@ impl<T> Deref for Spanned<T> {
 impl<T> DerefMut for Spanned<T> {
     fn deref_mut(&mut self) -> &mut T {
         &mut self.thing
+    }
+}
+
+impl<T: Display> Display for Spanned<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(end) = self.end {
+            write!(f, "{} at {}, {}", self.thing, self.start, end)
+        } else {
+            write!(f, "{} at {}", self.thing, self.start)
+        }
     }
 }
 
@@ -89,6 +106,24 @@ pub enum ParserErrorVariant {
         found: TokenVariant,
         expected: ExpectedToken,
     },
+}
+impl Display for ParserErrorVariant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::ParserErrorVariant::*;
+        match *self {
+            ExpectedEof => write!(f, "expected end of file - not an error..."),
+            LexerError(ref le) => le.fmt(f),
+            UnexpectedToken {
+                ref found,
+                ref expected,
+            } => write!(
+                f,
+                "unexpected token: expected {:?}, found {:?}",
+                expected,
+                found,
+            ),
+        }
+    }
 }
 pub type ParserError = Spanned<ParserErrorVariant>;
 

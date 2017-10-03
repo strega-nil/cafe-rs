@@ -77,7 +77,7 @@ fn main() {
 
     let ast = match Ast::new(&file) {
         Ok(ast) => ast,
-        Err(e) => user_error!("error: {:?}", e),
+        Err(e) => user_error!("error: {}", e),
     };
     if print_ast {
         println!("    ===   AST   ===    ");
@@ -86,7 +86,7 @@ fn main() {
     let ctxt = mir::MirCtxt::new();
     let mir = match Mir::new(&ctxt, ast) {
         Ok(mir) => mir,
-        Err(e) => user_error!("error: {:?}", e),
+        Err(e) => user_error!("error: {}", e),
     };
     if print_mir {
         println!("    ===   MIR   ===    ");

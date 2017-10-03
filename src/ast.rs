@@ -24,15 +24,6 @@ pub enum BinOpPrecedence {
     Comparison,
 }
 
-impl BinOp {
-    pub fn precedence(self) -> BinOpPrecedence {
-        match self {
-            BinOp::Plus => BinOpPrecedence::Addition,
-            BinOp::LessEq => BinOpPrecedence::Comparison,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum ExpressionVariant {
     UnitLiteral,
@@ -57,6 +48,78 @@ pub enum ExpressionVariant {
     },
     Log(Box<Expression>),
 }
+pub type Expression = Spanned<ExpressionVariant>;
+
+#[derive(Debug)]
+pub enum StatementVariant {
+    Expr(Expression),
+    Local {
+        name: String,
+        ty: Option<StringlyType>,
+        initializer: Expression,
+    },
+}
+pub type Statement = Spanned<StatementVariant>;
+
+#[derive(Debug)]
+pub struct Block_ {
+    pub statements: Vec<Statement>,
+    pub expr: Expression,
+}
+pub type Block = Spanned<Block_>;
+
+#[derive(Debug)]
+pub struct FunctionValue {
+    pub params: Vec<(String, StringlyType)>,
+    pub ret_ty: StringlyType,
+    pub blk: Block_,
+}
+pub type Function = Spanned<FunctionValue>;
+
+#[derive(Debug)]
+pub enum AstErrorVariant {
+    Parser(ParserErrorVariant),
+    MultipleValueDefinitions { name: String, original: Spanned<()> },
+}
+impl Display for AstErrorVariant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::AstErrorVariant::*;
+        match *self {
+            Parser(ref p) => p.fmt(f),
+            MultipleValueDefinitions {
+                ref name,
+                ref original,
+            } => write!(
+                f,
+                "found multiple definitions for '{}' - original definition at {}",
+                name,
+                original.start,
+            ),
+        }
+    }
+}
+pub type AstError = Spanned<AstErrorVariant>;
+pub type AstResult<T> = Result<T, AstError>;
+
+#[derive(Debug)]
+pub struct Ast {
+    funcs: HashMap<String, Function>,
+}
+
+struct Types<'ctx> {
+    inner: HashMap<String, mir::Type<'ctx>>,
+}
+
+
+impl BinOp {
+    pub fn precedence(self) -> BinOpPrecedence {
+        match self {
+            BinOp::Plus => BinOpPrecedence::Addition,
+            BinOp::LessEq => BinOpPrecedence::Comparison,
+        }
+    }
+}
+
 impl Expression {
     fn ty<'ctx>(
         &self,
@@ -106,7 +169,7 @@ impl Expression {
     }
 }
 
-impl ExpressionVariant {
+impl Expression {
     fn mir_binop(op: BinOp, lhs: mir::Reference, rhs: mir::Reference) -> mir::Value {
         match op {
             BinOp::Plus => mir::Value::Add(lhs, rhs),
@@ -126,24 +189,25 @@ impl ExpressionVariant {
         locals: &Scope<(mir::Type<'ctx>, mir::Reference)>,
     ) -> Result<(), TypeError<'ctx>> {
         let bool = mir.get_builtin_type(mir::BuiltinType::Bool);
-        match *self {
+        let (start, end) = (self.start, self.end);
+        match **self {
             ExpressionVariant::IntLiteral(i) => {
-                builder.add_stmt(mir, *block, dst, mir::Value::int_lit(i as i32))?
+                builder.add_stmt(mir, *block, dst, mir::Value::int_lit(i as i32), start, end)?
             }
             ExpressionVariant::UnitLiteral => {
-                builder.add_stmt(mir, *block, dst, mir::Value::unit_lit())?
+                builder.add_stmt(mir, *block, dst, mir::Value::unit_lit(), start, end)?
             }
             ExpressionVariant::BoolLiteral(b) => {
-                builder.add_stmt(mir, *block, dst, mir::Value::bool_lit(b))?
+                builder.add_stmt(mir, *block, dst, mir::Value::bool_lit(b), start, end)?
             }
             ExpressionVariant::Negative(ref e) => {
                 let ty = e.ty(tys, funcs, locals, builder, mir)?;
                 let var = builder.add_anonymous_local(ty);
                 e.to_mir(var, tys, mir, builder, block, funcs, locals)?;
-                builder.add_stmt(mir, *block, dst, mir::Value::Negative(var))?
+                builder.add_stmt(mir, *block, dst, mir::Value::Negative(var), start, end)?
             }
             ExpressionVariant::Variable(ref name) => if let Some(&loc) = locals.get(name) {
-                builder.add_stmt(mir, *block, dst, mir::Value::Reference(loc.1))?;
+                builder.add_stmt(mir, *block, dst, mir::Value::Reference(loc.1), start, end)?;
             } else {
                 panic!("no `{}` name found", name);
             },
@@ -182,7 +246,7 @@ impl ExpressionVariant {
                     rhs.to_mir(var, tys, mir, builder, block, funcs, locals)?;
                     var
                 };
-                builder.add_stmt(mir, *block, dst, Self::mir_binop(*op, lhs, rhs))?;
+                builder.add_stmt(mir, *block, dst, Self::mir_binop(*op, lhs, rhs), start, end)?;
             }
             ExpressionVariant::Call {
                 ref callee,
@@ -197,7 +261,14 @@ impl ExpressionVariant {
                     })
                     .collect::<Result<_, _>>()?;
                 if let Some(&callee) = funcs.get(callee) {
-                    builder.add_stmt(mir, *block, dst, mir::Value::Call { callee, args })?
+                    builder.add_stmt(
+                        mir,
+                        *block,
+                        dst,
+                        mir::Value::Call { callee, args },
+                        start,
+                        end,
+                    )?
                 } else {
                     panic!("function `{}` doesn't exist", callee);
                 }
@@ -206,32 +277,14 @@ impl ExpressionVariant {
                 let ty = arg.ty(tys, funcs, locals, builder, mir)?;
                 let var = builder.add_anonymous_local(ty);
                 arg.to_mir(var, tys, mir, builder, block, funcs, locals)?;
-                builder.add_stmt(mir, *block, dst, mir::Value::Log(var))?;
+                builder.add_stmt(mir, *block, dst, mir::Value::Log(var), start, end)?;
             }
         }
 
         Ok(())
     }
 }
-pub type Expression = Spanned<ExpressionVariant>;
-#[derive(Debug)]
-pub enum StatementVariant {
-    Expr(Expression),
-    Local {
-        name: String,
-        ty: Option<StringlyType>,
-        initializer: Expression,
-    },
-}
-pub type Statement = Spanned<StatementVariant>;
 
-
-#[derive(Debug)]
-pub struct Block_ {
-    pub statements: Vec<Statement>,
-    pub expr: Expression,
-}
-pub type Block = Spanned<Block_>;
 
 impl Block_ {
     fn ty<'ctx>(
@@ -294,14 +347,6 @@ impl Block_ {
     }
 }
 
-#[derive(Debug)]
-pub struct FunctionValue {
-    pub params: Vec<(String, StringlyType)>,
-    pub ret_ty: StringlyType,
-    pub blk: Block_,
-}
-pub type Function = Spanned<FunctionValue>;
-
 impl Function {
     fn build_mir<'ctx>(
         &self,
@@ -328,14 +373,6 @@ impl Function {
     }
 }
 
-#[derive(Debug)]
-pub enum AstErrorVariant {
-    Parser(ParserErrorVariant),
-    MultipleValueDefinitions { name: String, original: Spanned<()> },
-}
-pub type AstError = Spanned<AstErrorVariant>;
-pub type AstResult<T> = Result<T, AstError>;
-
 impl From<ParserError> for AstError {
     fn from(pe: ParserError) -> AstError {
         Spanned {
@@ -346,9 +383,22 @@ impl From<ParserError> for AstError {
     }
 }
 
-#[derive(Debug)]
-pub struct Ast {
-    funcs: HashMap<String, Function>,
+impl<'ctx> Types<'ctx> {
+    fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, name: String, ty: mir::Type<'ctx>) {
+        self.inner.insert(name, ty);
+    }
+    pub fn get(&self, name: &StringlyType) -> Option<mir::Type<'ctx>> {
+        match *name {
+            StringlyType::UserDefinedType(ref name) => self.inner.get(name).map(|x| *x),
+            StringlyType::Unit => self.inner.get("unit").map(|x| *x),
+        }
+    }
 }
 
 impl Ast {
@@ -389,28 +439,6 @@ impl Ast {
             }
         }
         Ok(Ast { funcs })
-    }
-}
-
-struct Types<'ctx> {
-    inner: HashMap<String, mir::Type<'ctx>>,
-}
-
-impl<'ctx> Types<'ctx> {
-    fn new() -> Self {
-        Self {
-            inner: HashMap::new(),
-        }
-    }
-
-    pub fn insert(&mut self, name: String, ty: mir::Type<'ctx>) {
-        self.inner.insert(name, ty);
-    }
-    pub fn get(&self, name: &StringlyType) -> Option<mir::Type<'ctx>> {
-        match *name {
-            StringlyType::UserDefinedType(ref name) => self.inner.get(name).map(|x| *x),
-            StringlyType::Unit => self.inner.get("unit").map(|x| *x),
-        }
     }
 }
 

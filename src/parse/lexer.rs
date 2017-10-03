@@ -5,6 +5,7 @@ use self::unicode_normalization::{Recompositions, UnicodeNormalization};
 
 use parse::{Location, Spanned};
 use std::str;
+use std::fmt::{self, Display};
 
 pub type LexerResult<T> = Result<T, LexerError>;
 
@@ -14,6 +15,21 @@ pub enum LexerErrorVariant {
     UnclosedComment,
     ReservedToken(&'static str),
     UnknownChar(char),
+}
+
+impl Display for LexerErrorVariant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::LexerErrorVariant::*;
+        match *self {
+            IdentAfterIntLiteral => write!(
+                f,
+                "found ident after int literal (this is reserved for future extensions"
+            ),
+            UnclosedComment => write!(f, "unclosed comment"),
+            ReservedToken(ref s) => write!(f, "reserved token: '{}'", s),
+            UnknownChar(ref c) => write!(f, "unknown character: '{}'", c),
+        }
+    }
 }
 pub type LexerError = Spanned<LexerErrorVariant>;
 

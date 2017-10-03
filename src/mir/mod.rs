@@ -11,6 +11,7 @@ mod data;
 
 use ast::Ast;
 use containers::Arena;
+use parse::{Location, Spanned};
 
 use self::runner::Runner;
 pub use self::ty::*;
@@ -114,14 +115,20 @@ impl<'ctx> FunctionBuilder<'ctx> {
         blk: Block,
         lhs: Reference,
         rhs: Value,
+        start: Location,
+        end: Option<Location>,
     ) -> Result<(), TypeError<'ctx>> {
         {
             let ty_lhs = self.bindings[lhs.0 as usize].ty;
-            let ty_rhs = rhs.ty(self, mir)?;
+            let ty_rhs = rhs.ty(self, mir, start, end)?;
             if ty_lhs != ty_rhs {
-                return Err(TypeErrorVariant::Mismatched {
-                    lhs: ty_lhs,
-                    rhs: ty_rhs,
+                return Err(Spanned {
+                    thing: TypeErrorVariant::Mismatched {
+                        lhs: ty_lhs,
+                        rhs: ty_rhs,
+                    },
+                    start,
+                    end,
                 });
             }
         }
