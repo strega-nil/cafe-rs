@@ -3,7 +3,7 @@
   - make Value -> Spanned<ValueVariant>
   - put type names into the AST, keep them out of the mir
 
-- break mir up into submodules
+- actually modularize mir, don't just put it in multiple files
 
 - checking to see if a number is in range
 

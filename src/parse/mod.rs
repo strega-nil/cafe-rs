@@ -283,7 +283,10 @@ impl<'src> Parser<'src> {
                         let start = expr.start;
                         let end = expr.end;
                         Spanned::new(
-                            Block_ { statements: vec![], expr },
+                            Block_ {
+                                statements: vec![],
+                                expr,
+                            },
                             start,
                             end,
                         )

@@ -6,18 +6,20 @@
 // without lots of allocations
 
 mod runner;
+mod ty;
+mod data;
 
 use ast::Ast;
 use containers::Arena;
-use parse::Location;
 
 use self::runner::Runner;
+pub use self::ty::*;
+pub use self::data::*;
 
-use std::{iter, slice};
 use std::ops::{Add, Rem, Sub};
 
 #[inline(always)]
-pub fn align<T>(x: T, to: T) -> T
+fn align<T>(x: T, to: T) -> T
 where
     T: Copy + Add<Output = T> + Sub<Output = T> + Rem<Output = T> + PartialEq,
 {
@@ -27,196 +29,6 @@ where
         x
     } else {
         x + (to - x % to)
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct Reference(u32);
-
-impl Reference {
-    pub fn ret() -> Self {
-        Reference(0)
-    }
-
-    fn param(n: u32) -> Self {
-        Reference(n + 1)
-    }
-}
-
-#[derive(Debug)]
-pub enum Literal {
-    Int(i32),
-    Bool(bool),
-    Unit,
-}
-
-impl Literal {
-    fn ty<'ctx>(&self, mir: &Mir<'ctx>) -> Type<'ctx> {
-        match *self {
-            Literal::Int(_) => mir.get_builtin_type(BuiltinType::SInt(IntSize::I32)),
-            Literal::Bool(_) => mir.get_builtin_type(BuiltinType::Bool),
-            Literal::Unit => mir.get_builtin_type(BuiltinType::Unit),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum Value {
-    Literal(Literal),
-    Reference(Reference),
-    Negative(Reference),
-    Add(Reference, Reference),
-    LessEq(Reference, Reference),
-    Call {
-        callee: FunctionDecl,
-        args: Vec<Reference>,
-    },
-    Log(Reference),
-}
-
-impl Value {
-    pub fn int_lit(i: i32) -> Self {
-        Value::Literal(Literal::Int(i))
-    }
-    pub fn bool_lit(b: bool) -> Self {
-        Value::Literal(Literal::Bool(b))
-    }
-    pub fn unit_lit() -> Self {
-        Value::Literal(Literal::Unit)
-    }
-
-    pub fn ty<'ctx>(
-        &self,
-        builder: &FunctionBuilder<'ctx>,
-        mir: &Mir<'ctx>,
-    ) -> Result<Type<'ctx>, TypeError<'ctx>> {
-        match *self {
-            Value::Literal(ref lit) => Ok(lit.ty(mir)),
-            Value::Negative(ref_) => {
-                let ty = builder.bindings[ref_.0 as usize].ty;
-                let s32 = mir.get_builtin_type(BuiltinType::SInt(IntSize::I32));
-                assert!(ty == s32, "negative must be done on s32");
-                Ok(builder.bindings[ref_.0 as usize].ty)
-            }
-            Value::Reference(ref_) => Ok(builder.bindings[ref_.0 as usize].ty),
-            Value::Add(rhs, lhs) => {
-                let ty_lhs = builder.bindings[lhs.0 as usize].ty;
-                let ty_rhs = builder.bindings[rhs.0 as usize].ty;
-                if ty_rhs != ty_lhs {
-                    Err(TypeErrorVariant::Mismatched {
-                        lhs: ty_lhs,
-                        rhs: ty_rhs,
-                    })
-                } else {
-                    let s32 = mir.get_builtin_type(BuiltinType::SInt(IntSize::I32));
-                    assert!(ty_lhs == s32, "addition must be done on s32");
-                    Ok(ty_lhs)
-                }
-            }
-            Value::LessEq(rhs, lhs) => {
-                let ty_lhs = builder.bindings[lhs.0 as usize].ty;
-                let ty_rhs = builder.bindings[rhs.0 as usize].ty;
-                if ty_rhs != ty_lhs {
-                    Err(TypeErrorVariant::Mismatched {
-                        lhs: ty_lhs,
-                        rhs: ty_rhs,
-                    })
-                } else {
-                    Ok(mir.get_builtin_type(BuiltinType::Bool))
-                }
-            }
-            Value::Call {
-                callee: ref decl,
-                ref args,
-            } => {
-                let callee = &mir.funcs[decl.0];
-                let params = &callee.ty.params;
-                if args.len() != params.tys.len() {
-                    return Err(TypeErrorVariant::NumberOfArgs {
-                        decl: *decl,
-                        args_expected: callee.ty.params.tys.len() as u32,
-                        args_found: args.len() as u32,
-                    });
-                }
-
-                for (arg, parm) in args.iter().zip(params.tys.iter()) {
-                    let arg_ty = builder.bindings[arg.0 as usize].ty;
-                    if arg_ty != *parm {
-                        return Err(TypeErrorVariant::Mismatched {
-                            lhs: *parm,
-                            rhs: arg_ty,
-                        });
-                    }
-                }
-
-                Ok(callee.ty.ret)
-            }
-            Value::Log(_) => Ok(mir.get_builtin_type(BuiltinType::Unit)),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-enum BindingKind {
-    Param(u32),
-    Local(u32),
-    Return,
-}
-
-#[derive(Debug)]
-struct Binding<'ctx> {
-    name: Option<String>,
-    ty: Type<'ctx>,
-    kind: BindingKind,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct Block(u32);
-
-#[derive(Copy, Clone, Debug)]
-pub enum Terminator {
-    IfElse {
-        cond: Reference,
-        then: Block,
-        els: Block,
-    },
-    Goto(Block),
-    Return,
-}
-
-#[derive(Debug)]
-struct Statement {
-    lhs: Reference,
-    rhs: Value,
-}
-
-#[derive(Debug)]
-struct BlockData {
-    stmts: Vec<Statement>,
-    term: Terminator,
-}
-
-#[derive(Debug)]
-pub enum TypeErrorVariant<'ctx> {
-    TypeNotFound(String),
-    BindingNotFound(String),
-    Mismatched { lhs: Type<'ctx>, rhs: Type<'ctx> },
-    NumberOfArgs {
-        decl: FunctionDecl,
-        args_expected: u32,
-        args_found: u32,
-    },
-}
-// TODO(ubsan): should be spanned
-pub type TypeError<'ctx> = TypeErrorVariant<'ctx>;
-
-impl<'ctx> TypeError<'ctx> {
-    pub fn type_not_found(name: String, _start: Location, _end: Option<Location>) -> Self {
-        TypeErrorVariant::TypeNotFound(name)
-    }
-
-    pub fn binding_not_found(name: String, _start: Location, _end: Option<Location>) -> Self {
-        TypeErrorVariant::BindingNotFound(name)
     }
 }
 
@@ -233,66 +45,6 @@ impl BlockData {
             stmts: vec![],
             term,
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct TypeList<'ctx> {
-    tys: Vec<Type<'ctx>>,
-}
-
-impl<'ctx> TypeList<'ctx> {
-    pub fn new() -> Self {
-        TypeList { tys: vec![] }
-    }
-
-    pub fn push(&mut self, ty: Type<'ctx>) {
-        self.tys.push(ty);
-    }
-
-    pub fn from_existing(tys: Vec<Type<'ctx>>) -> Self {
-        TypeList { tys }
-    }
-
-    // should really be cached
-    // aligned to 16 bytes
-    fn size(&self) -> u32 {
-        let mut offset = 0;
-        for ty in &self.tys {
-            let sz = ty.size();
-            let aln = ty.align();
-            offset = align(offset, aln);
-            offset += sz;
-        }
-        align(offset, 16)
-    }
-
-    fn offset_of(&self, idx: u32) -> u32 {
-        let mut offset = 0;
-        for ty in &self.tys[..idx as usize] {
-            let sz = ty.size();
-            let aln = ty.align();
-            offset = align(offset, aln);
-            offset += sz;
-        }
-        align(offset, self.tys[idx as usize].align())
-    }
-
-    fn iter<'a>(&'a self) -> iter::Cloned<slice::Iter<'a, Type<'ctx>>> {
-        self.tys.iter().cloned()
-    }
-
-    fn get(&self, idx: u32) -> Type<'ctx> {
-        self.tys[idx as usize]
-    }
-}
-
-impl<'a, 'ctx> IntoIterator for &'a TypeList<'ctx> {
-    type Item = Type<'ctx>;
-    type IntoIter = iter::Cloned<slice::Iter<'a, Type<'ctx>>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.tys.iter().cloned()
     }
 }
 
@@ -423,115 +175,6 @@ impl<'ctx> FunctionBuilder<'ctx> {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum IntSize {
-    //I8,
-    //I16,
-    I32,
-    //I64,
-    // ISize,
-    // I128,
-}
-impl IntSize {
-    fn size(self) -> u32 {
-        match self {
-            IntSize::I32 => 4,
-        }
-    }
-}
-#[derive(Debug)]
-pub enum BuiltinType {
-    SInt(IntSize),
-    //UInt(IntSize),
-    Bool,
-    Unit,
-}
-
-impl BuiltinType {
-    fn size(&self) -> u32 {
-        match *self {
-            BuiltinType::SInt(sz) => sz.size(),
-            BuiltinType::Bool => 1,
-            BuiltinType::Unit => 0,
-        }
-    }
-
-    fn align(&self) -> u32 {
-        match *self {
-            BuiltinType::SInt(sz) => sz.size(),
-            BuiltinType::Bool => 1,
-            BuiltinType::Unit => 1,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum TypeVariant<'ctx> {
-    Builtin(BuiltinType),
-    __LifetimeHolder(::std::marker::PhantomData<&'ctx ()>),
-}
-
-impl<'ctx> TypeVariant<'ctx> {
-    fn size(&self) -> u32 {
-        match *self {
-            TypeVariant::Builtin(ref builtin) => builtin.size(),
-            TypeVariant::__LifetimeHolder(_) => unreachable!(),
-        }
-    }
-    fn align(&self) -> u32 {
-        match *self {
-            TypeVariant::Builtin(ref builtin) => builtin.align(),
-            TypeVariant::__LifetimeHolder(_) => unreachable!(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct NamedType<'ctx> {
-    ty: TypeVariant<'ctx>,
-    name: String,
-}
-
-impl<'ctx> NamedType<'ctx> {
-    pub fn s32() -> Self {
-        Self {
-            ty: TypeVariant::Builtin(BuiltinType::SInt(IntSize::I32)),
-            name: "s32".to_owned(),
-        }
-    }
-    pub fn bool() -> Self {
-        Self {
-            ty: TypeVariant::Builtin(BuiltinType::Bool),
-            name: "bool".to_owned(),
-        }
-    }
-    pub fn unit() -> Self {
-        Self {
-            ty: TypeVariant::Builtin(BuiltinType::Unit),
-            name: "unit".to_owned(),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct Type<'ctx>(&'ctx NamedType<'ctx>);
-impl<'ctx> Type<'ctx> {
-    fn size(&self) -> u32 {
-        self.0.ty.size()
-    }
-    fn align(&self) -> u32 {
-        self.0.ty.align()
-    }
-    fn name(&self) -> &str {
-        &self.0.name
-    }
-}
-impl<'ctx> PartialEq for Type<'ctx> {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 as *const _ == other.0 as *const _
-    }
-}
-impl<'ctx> Eq for Type<'ctx> {}
-#[derive(Copy, Clone, Debug)]
 pub struct FunctionDecl(usize);
 
 // NOTE(ubsan): when I get namespacing, I should probably
@@ -549,12 +192,6 @@ struct Function<'ctx> {
     value: Option<FunctionValue<'ctx>>,
 }
 
-pub struct BuiltinTypes<'ctx> {
-    unit_ty: Type<'ctx>,
-    bool_ty: Type<'ctx>,
-    s32_ty: Type<'ctx>,
-}
-
 pub struct MirCtxt<'a> {
     types: Arena<NamedType<'a>>,
 }
@@ -566,7 +203,6 @@ impl<'a> MirCtxt<'a> {
         }
     }
 }
-
 
 pub struct Mir<'ctx> {
     funcs: Vec<Function<'ctx>>,
