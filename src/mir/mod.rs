@@ -1,6 +1,5 @@
 // TODO(ubsan): make sure to start dealing with Spanneds
 // whee errors are fun
-// TODO(ubsan): impl Display for Literal
 // TODO(ubsan): typeck should *probably* be done in AST
 // the current typeck is pretty hax
 // TODO(ubsan): figure out a good way to give params names
@@ -15,7 +14,6 @@ use parse::Location;
 use self::runner::Runner;
 
 use std::{iter, slice};
-use std::fmt::{self, Display};
 use std::ops::{Add, Rem, Sub};
 
 #[inline(always)]
@@ -29,103 +27,6 @@ where
         x
     } else {
         x + (to - x % to)
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum IntSize {
-    //I8,
-    //I16,
-    I32,
-    //I64,
-    // ISize,
-    // I128,
-}
-impl IntSize {
-    fn size(self) -> u32 {
-        match self {
-            IntSize::I32 => 4,
-        }
-    }
-
-    fn size_bits(self) -> u32 {
-        self.size() * 8
-    }
-}
-#[derive(Debug)]
-pub enum BuiltinType {
-    SInt(IntSize),
-    //UInt(IntSize),
-    Bool,
-    Unit,
-}
-
-impl BuiltinType {
-    fn size(&self) -> u32 {
-        match *self {
-            BuiltinType::SInt(sz) => sz.size(),
-            BuiltinType::Bool => 1,
-            BuiltinType::Unit => 0,
-        }
-    }
-
-    fn align(&self) -> u32 {
-        match *self {
-            BuiltinType::SInt(sz) => sz.size(),
-            BuiltinType::Bool => 1,
-            BuiltinType::Unit => 1,
-        }
-    }
-}
-
-impl Display for BuiltinType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            BuiltinType::SInt(size) => write!(f, "s{}", size.size_bits()),
-            BuiltinType::Bool => write!(f, "bool"),
-            BuiltinType::Unit => write!(f, "unit"),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum TypeVariant<'ctx> {
-    Builtin(BuiltinType),
-    __LifetimeHolder(::std::marker::PhantomData<&'ctx ()>),
-}
-
-impl<'ctx> TypeVariant<'ctx> {
-    fn size(&self) -> u32 {
-        match *self {
-            TypeVariant::Builtin(ref builtin) => builtin.size(),
-            TypeVariant::__LifetimeHolder(_) => unreachable!(),
-        }
-    }
-    fn align(&self) -> u32 {
-        match *self {
-            TypeVariant::Builtin(ref builtin) => builtin.align(),
-            TypeVariant::__LifetimeHolder(_) => unreachable!(),
-        }
-    }
-}
-
-impl<'ctx> TypeVariant<'ctx> {
-    pub fn s32() -> Self {
-        TypeVariant::Builtin(BuiltinType::SInt(IntSize::I32))
-    }
-    pub fn bool() -> Self {
-        TypeVariant::Builtin(BuiltinType::Bool)
-    }
-    pub fn unit() -> Self {
-        TypeVariant::Builtin(BuiltinType::Unit)
-    }
-}
-impl<'ctx> Display for TypeVariant<'ctx> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            TypeVariant::Builtin(ref builtin) => write!(f, "{}", builtin),
-            TypeVariant::__LifetimeHolder(_) => panic!(),
-        }
     }
 }
 
@@ -522,13 +423,106 @@ impl<'ctx> FunctionBuilder<'ctx> {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct Type<'ctx>(&'ctx TypeVariant<'ctx>);
-impl<'ctx> Type<'ctx> {
+pub enum IntSize {
+    //I8,
+    //I16,
+    I32,
+    //I64,
+    // ISize,
+    // I128,
+}
+impl IntSize {
+    fn size(self) -> u32 {
+        match self {
+            IntSize::I32 => 4,
+        }
+    }
+}
+#[derive(Debug)]
+pub enum BuiltinType {
+    SInt(IntSize),
+    //UInt(IntSize),
+    Bool,
+    Unit,
+}
+
+impl BuiltinType {
     fn size(&self) -> u32 {
-        self.0.size()
+        match *self {
+            BuiltinType::SInt(sz) => sz.size(),
+            BuiltinType::Bool => 1,
+            BuiltinType::Unit => 0,
+        }
+    }
+
+    fn align(&self) -> u32 {
+        match *self {
+            BuiltinType::SInt(sz) => sz.size(),
+            BuiltinType::Bool => 1,
+            BuiltinType::Unit => 1,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum TypeVariant<'ctx> {
+    Builtin(BuiltinType),
+    __LifetimeHolder(::std::marker::PhantomData<&'ctx ()>),
+}
+
+impl<'ctx> TypeVariant<'ctx> {
+    fn size(&self) -> u32 {
+        match *self {
+            TypeVariant::Builtin(ref builtin) => builtin.size(),
+            TypeVariant::__LifetimeHolder(_) => unreachable!(),
+        }
     }
     fn align(&self) -> u32 {
-        self.0.align()
+        match *self {
+            TypeVariant::Builtin(ref builtin) => builtin.align(),
+            TypeVariant::__LifetimeHolder(_) => unreachable!(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct NamedType<'ctx> {
+    ty: TypeVariant<'ctx>,
+    name: String,
+}
+
+impl<'ctx> NamedType<'ctx> {
+    pub fn s32() -> Self {
+        Self {
+            ty: TypeVariant::Builtin(BuiltinType::SInt(IntSize::I32)),
+            name: "s32".to_owned(),
+        }
+    }
+    pub fn bool() -> Self {
+        Self {
+            ty: TypeVariant::Builtin(BuiltinType::Bool),
+            name: "bool".to_owned(),
+        }
+    }
+    pub fn unit() -> Self {
+        Self {
+            ty: TypeVariant::Builtin(BuiltinType::Unit),
+            name: "unit".to_owned(),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Type<'ctx>(&'ctx NamedType<'ctx>);
+impl<'ctx> Type<'ctx> {
+    fn size(&self) -> u32 {
+        self.0.ty.size()
+    }
+    fn align(&self) -> u32 {
+        self.0.ty.align()
+    }
+    fn name(&self) -> &str {
+        &self.0.name
     }
 }
 impl<'ctx> PartialEq for Type<'ctx> {
@@ -542,18 +536,6 @@ pub struct FunctionDecl(usize);
 
 // NOTE(ubsan): when I get namespacing, I should probably
 // use paths instead of names?
-
-pub struct MirCtxt<'a> {
-    types: Arena<TypeVariant<'a>>,
-}
-
-impl<'a> MirCtxt<'a> {
-    pub fn new() -> Self {
-        MirCtxt {
-            types: Arena::new(),
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct FunctionType<'ctx> {
@@ -573,9 +555,22 @@ pub struct BuiltinTypes<'ctx> {
     s32_ty: Type<'ctx>,
 }
 
+pub struct MirCtxt<'a> {
+    types: Arena<NamedType<'a>>,
+}
+
+impl<'a> MirCtxt<'a> {
+    pub fn new() -> Self {
+        MirCtxt {
+            types: Arena::new(),
+        }
+    }
+}
+
+
 pub struct Mir<'ctx> {
     funcs: Vec<Function<'ctx>>,
-    types: &'ctx Arena<TypeVariant<'ctx>>,
+    types: &'ctx Arena<NamedType<'ctx>>,
     builtin_types: BuiltinTypes<'ctx>,
 }
 
@@ -584,9 +579,9 @@ impl<'ctx> Mir<'ctx> {
     pub fn new(ctx: &'ctx MirCtxt<'ctx>, mut ast: Ast) -> Result<Self, TypeError<'ctx>> {
         let types = &ctx.types;
         let builtin_types = BuiltinTypes {
-            unit_ty: Type(types.push(TypeVariant::unit())),
-            bool_ty: Type(types.push(TypeVariant::bool())),
-            s32_ty: Type(types.push(TypeVariant::s32())),
+            unit_ty: Type(types.push(NamedType::unit())),
+            bool_ty: Type(types.push(NamedType::bool())),
+            s32_ty: Type(types.push(NamedType::s32())),
         };
         let mut self_: Mir<'ctx> = Mir {
             funcs: vec![],
@@ -671,9 +666,9 @@ impl<'ctx> Mir<'ctx> {
             print!("{}_{}", name, r.0);
         }
 
-        self.types.call_on_all(|el| {
-            print!("type (unknown) = ");
-            match *el {
+        self.types.call_on_all(|&NamedType { ref ty, ref name }| {
+            print!("type {} = ", name);
+            match *ty {
                 TypeVariant::Builtin(_) => {
                     println!("<builtin>;");
                 }
@@ -691,28 +686,28 @@ impl<'ctx> Mir<'ctx> {
             if !ty.params.tys.is_empty() {
                 let tys = &ty.params.tys;
                 for par in &tys[..tys.len() - 1] {
-                    print!("{}, ", par.0);
+                    print!("{}, ", par.name());
                 }
-                print!("{}", tys[tys.len() - 1].0);
+                print!("{}", tys[tys.len() - 1].name());
             }
-            println!("): {} = {{", ty.ret.0);
+            println!("): {} = {{", ty.ret.name());
 
             println!("  locals = {{");
             for loc_ty in &value.locals {
-                println!("    {},", loc_ty.0);
+                println!("    {},", loc_ty.name());
             }
             println!("  }}");
 
             println!("  bindings = {{");
             for (i, binding) in value.bindings.iter().enumerate() {
                 match binding.kind {
-                    BindingKind::Return => println!("    <return>: {},", binding.ty.0),
+                    BindingKind::Return => println!("    <return>: {},", binding.ty.name()),
                     BindingKind::Param(p) => {
                         println!(
                             "    {}_{}: {} = <params>[{}],",
                             binding_name(&binding.name),
                             i,
-                            binding.ty.0,
+                            binding.ty.name(),
                             p,
                         );
                     }
@@ -721,7 +716,7 @@ impl<'ctx> Mir<'ctx> {
                             "    {}_{}: {} = <locals>[{}],",
                             binding_name(&binding.name),
                             i,
-                            binding.ty.0,
+                            binding.ty.name(),
                             loc,
                         );
                     }

@@ -3,6 +3,8 @@
   - make Value -> Spanned<ValueVariant>
   - put type names into the AST, keep them out of the mir
 
+- break mir up into submodules
+
 - checking to see if a number is in range
 
 - parens

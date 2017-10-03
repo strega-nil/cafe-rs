@@ -82,10 +82,10 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
         assert!(
             dst_ty.0 as *const _ == src_ty.0 as *const _,
             "dst: {}, src: {}",
-            dst_ty.0,
-            src_ty.0,
+            dst_ty.name(),
+            src_ty.name(),
         );
-        ::std::ptr::copy(src, dst, dst_ty.0.size() as usize);
+        ::std::ptr::copy(src, dst, dst_ty.size() as usize);
     }
 
     fn pop_state(&mut self) {
@@ -135,7 +135,7 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
         assert!(
             mem::size_of::<T>() == src.1.size() as usize,
             "attempted to read value of incorrect size: {} (size needed: {})",
-            (src.1).0,
+            src.1.name(),
             mem::size_of::<T>(),
         );
         ptr::copy_nonoverlapping(src.0, (&mut tmp) as *mut _ as *mut u8, mem::size_of::<T>());
@@ -308,7 +308,7 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
 
     fn stmt_log(&mut self, _: mir::Reference, thing: mir::Reference) {
         let thing = self.get_binding((Frame::Current, thing));
-        if let mir::TypeVariant::Builtin(ref ty) = *(thing.1).0 {
+        if let mir::TypeVariant::Builtin(ref ty) = (thing.1).0.ty {
             unsafe {
                 match *ty {
                     mir::BuiltinType::SInt(mir::IntSize::I32) => {
