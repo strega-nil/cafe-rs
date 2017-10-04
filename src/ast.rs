@@ -27,7 +27,7 @@ pub enum BinOpPrecedence {
 #[derive(Debug)]
 pub enum ExpressionVariant {
     UnitLiteral,
-    IntLiteral(u64),
+    IntLiteral { is_negative: bool, value: u64 },
     BoolLiteral(bool),
     Variable(String),
     Negative(Box<Expression>),
@@ -132,7 +132,7 @@ impl Expression {
         match **self {
             ExpressionVariant::UnitLiteral => Ok(mir.get_builtin_type(mir::BuiltinType::Unit)),
             ExpressionVariant::BoolLiteral(_) => Ok(mir.get_builtin_type(mir::BuiltinType::Bool)),
-            ExpressionVariant::IntLiteral(_) => {
+            ExpressionVariant::IntLiteral { .. } => {
                 Ok(mir.get_builtin_type(mir::BuiltinType::SInt(mir::IntSize::I32)))
             }
             ExpressionVariant::Variable(ref name) => if let Some(local) = locals.get(name) {
@@ -191,8 +191,16 @@ impl Expression {
         let bool = mir.get_builtin_type(mir::BuiltinType::Bool);
         let (start, end) = (self.start, self.end);
         match **self {
-            ExpressionVariant::IntLiteral(i) => {
-                builder.add_stmt(mir, *block, dst, mir::Value::int_lit(i as i32), start, end)?
+            ExpressionVariant::IntLiteral { is_negative, value } => {
+                let mul = if is_negative { -1 } else { 1 };
+                builder.add_stmt(
+                    mir,
+                    *block,
+                    dst,
+                    mir::Value::int_lit((value as i32) * mul),
+                    start,
+                    end,
+                )?
             }
             ExpressionVariant::UnitLiteral => {
                 builder.add_stmt(mir, *block, dst, mir::Value::unit_lit(), start, end)?
@@ -508,7 +516,11 @@ fn write_indent(f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
 impl ExpressionVariant {
     fn fmt(&self, f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
         match *self {
-            ExpressionVariant::IntLiteral(i) => write!(f, "{}", i),
+            ExpressionVariant::IntLiteral { is_negative, value } => if is_negative {
+                write!(f, "-{}", value)
+            } else {
+                write!(f, "{}", value)
+            },
             ExpressionVariant::BoolLiteral(b) => write!(f, "{}", b),
             ExpressionVariant::UnitLiteral => write!(f, "()"),
             ExpressionVariant::Variable(ref s) => write!(f, "{}", s),

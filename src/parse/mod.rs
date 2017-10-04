@@ -292,11 +292,33 @@ impl<'src> Parser<'src> {
         let Spanned { thing, start, end } = self.get_token()?;
 
         let mut expr = match thing {
-            TokenVariant::Integer(u) => Spanned::new(ExpressionVariant::IntLiteral(u), start, end),
-            TokenVariant::Minus => {
+            TokenVariant::Integer(u) => Spanned::new(
+                ExpressionVariant::IntLiteral {
+                    is_negative: false,
+                    value: u,
+                },
+                start,
+                end,
+            ),
+            TokenVariant::Minus => if let &Spanned {
+                thing: TokenVariant::Integer(n),
+                end,
+                ..
+            } = self.peek_token()?
+            {
+                self.get_token()?;
+                Spanned::new(
+                    ExpressionVariant::IntLiteral {
+                        is_negative: true,
+                        value: n,
+                    },
+                    start,
+                    end,
+                )
+            } else {
                 let expr = self.parse_single_expr()?;
                 Spanned::new(ExpressionVariant::Negative(Box::new(expr)), start, end)
-            }
+            },
             TokenVariant::OpenParen => {
                 let end = eat_token!(self, CloseParen).end;
                 Spanned::new(ExpressionVariant::UnitLiteral, start, end)

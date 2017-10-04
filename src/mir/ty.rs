@@ -3,6 +3,7 @@ use super::align;
 
 use std::{iter, slice};
 use std::fmt::{self, Display};
+use std::ops::{Deref, Index};
 
 #[derive(Debug)]
 pub enum TypeErrorVariant<'ctx> {
@@ -122,8 +123,8 @@ impl<'ctx> TypeVariant<'ctx> {
 
 #[derive(Debug)]
 pub struct NamedType<'ctx> {
-    pub ty: TypeVariant<'ctx>,
-    pub name: String,
+    ty: TypeVariant<'ctx>,
+    name: String,
 }
 
 impl<'ctx> NamedType<'ctx> {
@@ -146,19 +147,26 @@ impl<'ctx> NamedType<'ctx> {
             name: "unit".to_owned(),
         }
     }
+
+    pub fn size(&self) -> u32 {
+        self.ty.size()
+    }
+    pub fn align(&self) -> u32 {
+        self.ty.align()
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn variant(&self) -> &TypeVariant<'ctx> {
+        &self.ty
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct Type<'ctx>(pub(super) &'ctx NamedType<'ctx>);
+pub struct Type<'ctx>(&'ctx NamedType<'ctx>);
 impl<'ctx> Type<'ctx> {
-    pub fn size(&self) -> u32 {
-        self.0.ty.size()
-    }
-    pub fn align(&self) -> u32 {
-        self.0.ty.align()
-    }
-    pub fn name(&self) -> &str {
-        &self.0.name
+    pub fn new(inner: &'ctx NamedType<'ctx>) -> Self {
+        Type(inner)
     }
 }
 impl<'ctx> PartialEq for Type<'ctx> {
@@ -167,6 +175,12 @@ impl<'ctx> PartialEq for Type<'ctx> {
     }
 }
 impl<'ctx> Eq for Type<'ctx> {}
+impl<'ctx> Deref for Type<'ctx> {
+    type Target = NamedType<'ctx>;
+    fn deref(&self) -> &NamedType<'ctx> {
+        self.0
+    }
+}
 
 pub struct BuiltinTypes<'ctx> {
     pub unit_ty: Type<'ctx>,
@@ -176,7 +190,7 @@ pub struct BuiltinTypes<'ctx> {
 
 #[derive(Debug)]
 pub struct TypeList<'ctx> {
-    pub(super) tys: Vec<Type<'ctx>>,
+    tys: Vec<Type<'ctx>>,
 }
 
 impl<'ctx> TypeList<'ctx> {
@@ -190,6 +204,14 @@ impl<'ctx> TypeList<'ctx> {
 
     pub fn from_existing(tys: Vec<Type<'ctx>>) -> Self {
         TypeList { tys }
+    }
+
+    pub fn number_of_types(&self) -> u32 {
+        self.tys.len() as u32
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.tys.is_empty()
     }
 
     // should really be cached
@@ -220,8 +242,15 @@ impl<'ctx> TypeList<'ctx> {
         self.tys.iter().cloned()
     }
 
-    pub fn get(&self, idx: u32) -> Type<'ctx> {
-        self.tys[idx as usize]
+    pub fn get(&self, idx: u32) -> Option<Type<'ctx>> {
+        self.tys.get(idx as usize).map(|&x| x)
+    }
+}
+
+impl<'ctx> Index<u32> for TypeList<'ctx> {
+    type Output = Type<'ctx>;
+    fn index(&self, idx: u32) -> &Type<'ctx> {
+        &self.tys[idx as usize]
     }
 }
 

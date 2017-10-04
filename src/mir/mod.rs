@@ -77,13 +77,14 @@ impl<'ctx> FunctionBuilder<'ctx> {
             term: Terminator::Return,
         };
 
-        let mut bindings = Vec::with_capacity(mir.funcs[decl.0].ty.params.tys.len() + 1);
+        let ty = &mir.funcs[decl.0].ty;
+        let mut bindings = Vec::with_capacity((ty.params.number_of_types() + 1) as usize);
         bindings.push(Binding {
             name: Some("<return>".to_owned()),
-            ty: mir.funcs[decl.0].ty.ret,
+            ty: ty.ret,
             kind: BindingKind::Return,
         });
-        for (i, ty) in mir.funcs[decl.0].ty.params.iter().enumerate() {
+        for (i, ty) in ty.params.iter().enumerate() {
             bindings.push(Binding {
                 name: None,
                 ty,
@@ -160,7 +161,7 @@ impl<'ctx> FunctionBuilder<'ctx> {
 
     pub fn add_anonymous_local(&mut self, ty: Type<'ctx>) -> Reference {
         self.locals.push(ty);
-        let kind = BindingKind::Local((self.locals.tys.len() - 1) as u32);
+        let kind = BindingKind::Local(self.locals.number_of_types() - 1);
         self.bindings.push(Binding {
             name: None,
             ty,
@@ -171,7 +172,7 @@ impl<'ctx> FunctionBuilder<'ctx> {
 
     pub fn add_local(&mut self, name: String, ty: Type<'ctx>) -> Reference {
         self.locals.push(ty);
-        let kind = BindingKind::Local((self.locals.tys.len() - 1) as u32);
+        let kind = BindingKind::Local(self.locals.number_of_types() - 1);
         self.bindings.push(Binding {
             name: Some(name),
             ty,
@@ -222,9 +223,9 @@ impl<'ctx> Mir<'ctx> {
     pub fn new(ctx: &'ctx MirCtxt<'ctx>, mut ast: Ast) -> Result<Self, TypeError<'ctx>> {
         let types = &ctx.types;
         let builtin_types = BuiltinTypes {
-            unit_ty: Type(types.push(NamedType::unit())),
-            bool_ty: Type(types.push(NamedType::bool())),
-            s32_ty: Type(types.push(NamedType::s32())),
+            unit_ty: Type::new(types.push(NamedType::unit())),
+            bool_ty: Type::new(types.push(NamedType::bool())),
+            s32_ty: Type::new(types.push(NamedType::s32())),
         };
         let mut self_: Mir<'ctx> = Mir {
             funcs: vec![],
@@ -309,9 +310,9 @@ impl<'ctx> Mir<'ctx> {
             print!("{}_{}", name, r.0);
         }
 
-        self.types.call_on_all(|&NamedType { ref ty, ref name }| {
-            print!("type {} = ", name);
-            match *ty {
+        self.types.call_on_all(|ty| {
+            print!("type {} = ", ty.name());
+            match *ty.variant() {
                 TypeVariant::Builtin(_) => {
                     println!("<builtin>;");
                 }
@@ -326,12 +327,14 @@ impl<'ctx> Mir<'ctx> {
         {
             let (name, value) = (name.as_ref().unwrap(), value.as_ref().unwrap());
             print!("func {}(", name);
-            if !ty.params.tys.is_empty() {
-                let tys = &ty.params.tys;
-                for par in &tys[..tys.len() - 1] {
-                    print!("{}, ", par.name());
+            if !ty.params.is_empty() {
+                let mut iter = ty.params.iter();
+                let mut last = iter.next().expect("balkjlfkajdsf");
+                while let Some(cur) = iter.next() {
+                    print!("{}, ", last.name());
+                    last = cur;
                 }
-                print!("{}", tys[tys.len() - 1].name());
+                print!("{}", last.name());
             }
             println!("): {} = {{", ty.ret.name());
 

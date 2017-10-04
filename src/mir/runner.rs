@@ -64,11 +64,11 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
             }
             mir::BindingKind::Param(i) => {
                 let off = offset(frame.params_start + frame.func_ty.params.offset_of(i) as usize);
-                (off, frame.func_ty.params.get(i))
+                (off, frame.func_ty.params[i])
             }
             mir::BindingKind::Local(i) => {
                 let off = offset(frame.locals_start + frame.func.locals.offset_of(i) as usize);
-                (off, frame.func.locals.get(i))
+                (off, frame.func.locals[i])
             }
         }
     }
@@ -80,7 +80,7 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
     ) {
         let (dst, dst_ty) = self.get_binding(dst);
         assert!(
-            dst_ty.0 as *const _ == src_ty.0 as *const _,
+            dst_ty == src_ty,
             "dst: {}, src: {}",
             dst_ty.name(),
             src_ty.name(),
@@ -308,7 +308,7 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
 
     fn stmt_log(&mut self, _: mir::Reference, thing: mir::Reference) {
         let thing = self.get_binding((Frame::Current, thing));
-        if let mir::TypeVariant::Builtin(ref ty) = (thing.1).0.ty {
+        if let mir::TypeVariant::Builtin(ref ty) = *thing.1.variant() {
             unsafe {
                 match *ty {
                     mir::BuiltinType::SInt(mir::IntSize::I32) => {

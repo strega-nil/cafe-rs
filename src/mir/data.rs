@@ -113,14 +113,14 @@ impl Value {
             } => {
                 let callee = &mir.funcs[decl.0];
                 let params = &callee.ty.params;
-                if args.len() != params.tys.len() {
+                if args.len() != (params.number_of_types() as usize) {
                     return Err(Spanned {
                         thing: TypeErrorVariant::NumberOfArgs {
                             name: mir.funcs[decl.0]
                                 .name
                                 .clone()
                                 .unwrap_or("<anonymous function>".to_owned()),
-                            args_expected: callee.ty.params.tys.len() as u32,
+                            args_expected: callee.ty.params.number_of_types() as u32,
                             args_found: args.len() as u32,
                         },
                         start,
@@ -128,12 +128,12 @@ impl Value {
                     });
                 }
 
-                for (arg, parm) in args.iter().zip(params.tys.iter()) {
+                for (arg, parm) in args.iter().zip(params) {
                     let arg_ty = builder.bindings[arg.0 as usize].ty;
-                    if arg_ty != *parm {
+                    if arg_ty != parm {
                         return Err(Spanned {
                             thing: TypeErrorVariant::Mismatched {
-                                lhs: *parm,
+                                lhs: parm,
                                 rhs: arg_ty,
                             },
                             start,
