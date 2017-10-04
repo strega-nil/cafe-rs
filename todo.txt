@@ -1,14 +1,18 @@
-- prettier error output
-  - make Value -> Spanned<ValueVariant>
+- USER EXPERIENCE
+  - prettier error output
 
-- actually modularize mir, don't just put it in multiple files
+- COMPILER DESIGN
+  - do more to modularize mir
+  - modularize ast
 
-- checking to see if a number is in range
+- COMPILED CODE ISSUES
+  - checking to see if a number is in range
 
-- parens
-- non-addition operators
-- reference functions parameters
+- LANGUAGE
+  - parens
+  - non-addition operators
+  - reference functions parameters
 
-- unary operators (+)
+  - unary operators (+)
 
-- good typechecking
+  - good typechecking
