@@ -1,6 +1,6 @@
-let main(): s32 {
+val main(): s32 {
   log(fib(15));
-    
+
   let res = debug_s32(bloop(true, ()));
   log(42424242);
   log(true);
@@ -9,22 +9,22 @@ let main(): s32 {
   0
 }
 
-let debug_s32(n: s32): s32 {
+val debug_s32(n: s32): s32 {
   log(n);
   n
 }
 
-let should_recurse(n: s32): bool {
+val should_recurse(n: s32): bool {
   2 <= n
 }
-let fib(n: s32): s32 {
+val fib(n: s32): s32 {
   if should_recurse(n) {
     fib(n + -1) + fib(n + -2)
   } else {
     n
   }
 }
-let bloop(x: bool, y: unit): s32 {
+val bloop(x: bool, y: unit): s32 {
   if x {
     1
   } else {

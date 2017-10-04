@@ -1,17 +1,24 @@
+notes:
+  - `-` means "something that will happen at some point"
+  - `*` means "something that will happen soon"
+
 - USER EXPERIENCE
   - prettier error output
 
 - COMPILER DESIGN
   - do more to modularize mir
   - modularize ast
+  - string cache
 
 - COMPILED CODE ISSUES
   - checking to see if a number is in range
 
 - LANGUAGE
+  * reference function parameters
+  * fully flesh out the basic types
+  * user defined types!
   - parens
   - non-addition operators
-  - reference functions parameters
 
   - unary operators (+)
 

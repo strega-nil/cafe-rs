@@ -1,8 +1,8 @@
-let main(): s32 {
+val main(): s32 {
   foo(true, ())
 }
 
-let foo(x: bool, y: unit): s32 {
+val foo(x: bool, y: unit): s32 {
   if x {
     1
   } else {

@@ -1,4 +1,4 @@
-let main(): s32 {
+val main(): s32 {
   let x = 0;
   x
 }

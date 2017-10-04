@@ -1,8 +1,8 @@
-let main(): s32 {
+val main(): s32 {
   foo();
   1
 }
 
-let foo(): s32 {
+val foo(): s32 {
   0
 }

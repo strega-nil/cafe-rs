@@ -1,19 +1,19 @@
-let main(): s32 {
+val main(): s32 {
   foo1() + foo2() + foo3() + foo4()
 }
 
-let foo1(): s32 {
+val foo1(): s32 {
   1
 }
 
-let foo2(): s32 {
+val foo2(): s32 {
   2
 }
 
-let foo3(): s32 {
+val foo3(): s32 {
   3
 }
 
-let foo4(): s32 {
+val foo4(): s32 {
   4
 }

@@ -1,12 +1,12 @@
-let main(): s32 {
+val main(): s32 {
   fib(15)
 }
 
-let should_recurse(n: s32): bool {
+val should_recurse(n: s32): bool {
   2 <= n
 }
 
-let fib(n: s32): s32 {
+val fib(n: s32): s32 {
   if should_recurse(n) {
     fib(n + -1) + fib(n + -2)
   } else {
