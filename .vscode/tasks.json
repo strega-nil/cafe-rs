@@ -6,7 +6,10 @@
         {
             "taskName": "build",
             "type": "shell",
-            "command": "cargo build",
+            "command": "cargo",
+            "args": [
+                "build"
+            ],
             "problemMatcher": [
                 "$rustc"
             ],
@@ -18,7 +21,14 @@
         {
             "taskName": "scratch",
             "type": "shell",
-            "command": "cargo run -- --print-ast --print-mir language/scratch.cf",
+            "command": "cargo",
+            "args": [
+                "run", 
+                "--",
+                "--print-ast",
+                "--print-mir",
+                "language/scratch.cf"
+            ],
             "problemMatcher": [
                 "$rustc"
             ]
@@ -26,7 +36,10 @@
         {
             "taskName": "test",
             "type": "shell",
-            "command": "python test.py"
+            "command": "python",
+            "args": [
+                "test.py"
+            ]
         }
     ]
 }
