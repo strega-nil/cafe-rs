@@ -24,9 +24,22 @@ pub struct Span {
 
 impl Span {
     fn union(self, end: Span) -> Self {
-        let Span { start_line, start_column, .. } = self;
-        let Span { end_line, end_column, .. } = end;
-        Self { start_line, start_column, end_line, end_column }
+        let Span {
+            start_line,
+            start_column,
+            ..
+        } = self;
+        let Span {
+            end_line,
+            end_column,
+            ..
+        } = end;
+        Self {
+            start_line,
+            start_column,
+            end_line,
+            end_column,
+        }
     }
 }
 
@@ -132,7 +145,7 @@ macro_rules! unexpected_token {
   (
     $tok:expr,
     $expected:ident,
-    $span:expr  
+    $span:expr
     $(,)*
   ) => ({
     let thing = ParserErrorVariant::UnexpectedToken {
@@ -234,13 +247,18 @@ impl<'src> Parser<'src> {
 
     fn end_of_expr(s: &Token) -> Option<Token> {
         match **s {
-            TokenVariant::Semicolon => Some(Spanned { thing: TokenVariant::Semicolon, span: s.span }),
-            TokenVariant::CloseBrace => {
-                Some(Spanned { thing: TokenVariant::CloseBrace, span: s.span })
-            }
-            TokenVariant::CloseParen => {
-                Some(Spanned { thing: TokenVariant::CloseParen, span: s.span })
-            }
+            TokenVariant::Semicolon => Some(Spanned {
+                thing: TokenVariant::Semicolon,
+                span: s.span,
+            }),
+            TokenVariant::CloseBrace => Some(Spanned {
+                thing: TokenVariant::CloseBrace,
+                span: s.span,
+            }),
+            TokenVariant::CloseParen => Some(Spanned {
+                thing: TokenVariant::CloseParen,
+                span: s.span,
+            }),
             _ => None,
         }
     }
@@ -291,19 +309,30 @@ impl<'src> Parser<'src> {
                 }
             } else {
                 let expr = self.parse_single_expr()?;
-                Spanned { thing: ExpressionVariant::Negative(Box::new(expr)), span }
+                Spanned {
+                    thing: ExpressionVariant::Negative(Box::new(expr)),
+                    span,
+                }
             },
             TokenVariant::OpenParen => {
                 let end = eat_token!(self, CloseParen).span;
-                Spanned { thing: ExpressionVariant::UnitLiteral, span: span.union(end) }
+                Spanned {
+                    thing: ExpressionVariant::UnitLiteral,
+                    span: span.union(end),
+                }
             }
-            TokenVariant::Ident(s) => Spanned { thing: ExpressionVariant::Variable(s), span },
-            TokenVariant::KeywordTrue => {
-                Spanned { thing: ExpressionVariant::BoolLiteral(true), span }
-            }
-            TokenVariant::KeywordFalse => {
-                Spanned { thing: ExpressionVariant::BoolLiteral(false), span }
-            }
+            TokenVariant::Ident(s) => Spanned {
+                thing: ExpressionVariant::Variable(s),
+                span,
+            },
+            TokenVariant::KeywordTrue => Spanned {
+                thing: ExpressionVariant::BoolLiteral(true),
+                span,
+            },
+            TokenVariant::KeywordFalse => Spanned {
+                thing: ExpressionVariant::BoolLiteral(false),
+                span,
+            },
             TokenVariant::KeywordIf => {
                 fn parse(this: &mut Parser, span: Span) -> ParserResult<Expression> {
                     let cond = this.parse_expr()?;
@@ -340,14 +369,14 @@ impl<'src> Parser<'src> {
             TokenVariant::OpenBrace => {
                 let blk = self.parse_block_no_open(span)?;
                 let end = blk.span;
-                Spanned { thing: ExpressionVariant::Block(Box::new(blk)), span: span.union(end) }
+                Spanned {
+                    thing: ExpressionVariant::Block(Box::new(blk)),
+                    span: span.union(end),
+                }
             }
             tok => panic!(
                 "unimplemented expression: {:?}",
-                Spanned {
-                    thing: tok,
-                    span,
-                },
+                Spanned { thing: tok, span },
             ),
         };
 
@@ -383,9 +412,15 @@ impl<'src> Parser<'src> {
                     assert!(args.len() == 1);
                     let arg = args.into_boxed_slice();
                     let arg = unsafe { Box::from_raw(Box::into_raw(arg) as *mut Expression) };
-                    expr = Spanned { thing: ExpressionVariant::Log(arg), span: expr.span.union(end) };
+                    expr = Spanned {
+                        thing: ExpressionVariant::Log(arg),
+                        span: expr.span.union(end),
+                    };
                 } else {
-                    expr = Spanned { thing: ExpressionVariant::Call { callee, args }, span: expr.span.union(end) };
+                    expr = Spanned {
+                        thing: ExpressionVariant::Call { callee, args },
+                        span: expr.span.union(end),
+                    };
                 }
             } else {
                 unimplemented!()
@@ -411,7 +446,10 @@ impl<'src> Parser<'src> {
                 rhs: Box::new(rhs),
                 op,
             };
-            Spanned { thing: expr, span: start.union(end) }
+            Spanned {
+                thing: expr,
+                span: start.union(end),
+            }
         }
 
         let rhs = self.parse_single_expr()?;
@@ -513,11 +551,17 @@ impl<'src> Parser<'src> {
                     params.push((name, ty));
                     if let None = maybe_eat_token!(self, Comma) {
                         let end = eat_token!(self, CloseParen).span;
-                        return Ok(Spanned { thing: params, span: open.span.union(end) });
+                        return Ok(Spanned {
+                            thing: params,
+                            span: open.span.union(end),
+                        });
                     }
                 }
                 TokenVariant::CloseParen => {
-                    return Ok(Spanned { thing: params, span: open.span.union(tok.span) });
+                    return Ok(Spanned {
+                        thing: params,
+                        span: open.span.union(tok.span),
+                    });
                 }
                 _ => {
                     return unexpected_token!(tok, Parameter);
@@ -541,7 +585,10 @@ impl<'src> Parser<'src> {
         }
         let end = eat_token!(self, CloseBrace).span;
         let thing = Block_ { statements, expr };
-        Ok(Spanned { thing, span: start.union(end) })
+        Ok(Spanned {
+            thing,
+            span: start.union(end),
+        })
     }
 
     fn parse_block(&mut self) -> ParserResult<Block> {
@@ -568,7 +615,13 @@ impl<'src> Parser<'src> {
                     ret_ty,
                     blk: blk.thing,
                 });
-                Ok((name, Spanned { thing, span: span.union(blk.span) }))
+                Ok((
+                    name,
+                    Spanned {
+                        thing,
+                        span: span.union(blk.span),
+                    },
+                ))
             }
             tok => unexpected_token!(tok, Ident, span),
         }

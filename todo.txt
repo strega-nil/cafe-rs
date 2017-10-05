@@ -4,6 +4,7 @@ notes:
 
 - USER EXPERIENCE
   - prettier error output
+  * types not found should point to the type, not to the thing around it
 
 - COMPILER DESIGN
   - do more to modularize mir
