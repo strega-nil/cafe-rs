@@ -93,7 +93,7 @@ impl Display for AstErrorVariant {
                 f,
                 "found multiple definitions for '{}' - original definition at {}",
                 name,
-                original.start,
+                original.span,
             ),
         }
     }
@@ -138,11 +138,7 @@ impl Expression {
             ExpressionVariant::Variable(ref name) => if let Some(local) = locals.get(name) {
                 Ok(local.0)
             } else {
-                Err(TypeError::binding_not_found(
-                    name.clone(),
-                    self.start,
-                    self.end,
-                ))
+                Err(TypeError::binding_not_found(name.clone(), self.span))
             },
             ExpressionVariant::Negative(ref e) => e.ty(tys, funcs, locals, builder, mir),
             ExpressionVariant::Block(ref b) => b.ty(tys, funcs, locals, builder, mir),
@@ -158,11 +154,7 @@ impl Expression {
             ExpressionVariant::Call { ref callee, .. } => if let Some(func) = funcs.get(callee) {
                 Ok(mir.get_function_type(*func).ret)
             } else {
-                Err(TypeError::binding_not_found(
-                    callee.clone(),
-                    self.start,
-                    self.end,
-                ))
+                Err(TypeError::binding_not_found(callee.clone(), self.span))
             },
             ExpressionVariant::Log(_) => Ok(mir.get_builtin_type(mir::BuiltinType::Unit)),
         }
@@ -189,7 +181,7 @@ impl Expression {
         locals: &Scope<(mir::Type<'ctx>, mir::Reference)>,
     ) -> Result<(), TypeError<'ctx>> {
         let bool = mir.get_builtin_type(mir::BuiltinType::Bool);
-        let (start, end) = (self.start, self.end);
+        let span = self.span;
         match **self {
             ExpressionVariant::IntLiteral { is_negative, value } => {
                 let mul = if is_negative { -1 } else { 1 };
@@ -198,26 +190,25 @@ impl Expression {
                     *block,
                     dst,
                     mir::Value::int_lit((value as i32) * mul),
-                    start,
-                    end,
+                    span,
                 )?
             }
             ExpressionVariant::UnitLiteral => {
-                builder.add_stmt(mir, *block, dst, mir::Value::unit_lit(), start, end)?
+                builder.add_stmt(mir, *block, dst, mir::Value::unit_lit(), span)?
             }
             ExpressionVariant::BoolLiteral(b) => {
-                builder.add_stmt(mir, *block, dst, mir::Value::bool_lit(b), start, end)?
+                builder.add_stmt(mir, *block, dst, mir::Value::bool_lit(b), span)?
             }
             ExpressionVariant::Negative(ref e) => {
                 let ty = e.ty(tys, funcs, locals, builder, mir)?;
                 let var = builder.add_anonymous_local(ty);
                 e.to_mir(var, tys, mir, builder, block, funcs, locals)?;
-                builder.add_stmt(mir, *block, dst, mir::Value::Negative(var), start, end)?
+                builder.add_stmt(mir, *block, dst, mir::Value::Negative(var), span)?
             }
             ExpressionVariant::Variable(ref name) => if let Some(&loc) = locals.get(name) {
-                builder.add_stmt(mir, *block, dst, mir::Value::Reference(loc.1), start, end)?;
+                builder.add_stmt(mir, *block, dst, mir::Value::Reference(loc.1), span)?;
             } else {
-                panic!("no `{}` name found", name);
+                return Err(TypeError::binding_not_found(name.clone(), span));
             },
             ExpressionVariant::Block(ref blk) => {
                 blk.to_mir(dst, tys, mir, builder, block, funcs, locals)?;
@@ -254,7 +245,7 @@ impl Expression {
                     rhs.to_mir(var, tys, mir, builder, block, funcs, locals)?;
                     var
                 };
-                builder.add_stmt(mir, *block, dst, Self::mir_binop(*op, lhs, rhs), start, end)?;
+                builder.add_stmt(mir, *block, dst, Self::mir_binop(*op, lhs, rhs), span)?;
             }
             ExpressionVariant::Call {
                 ref callee,
@@ -269,14 +260,7 @@ impl Expression {
                     })
                     .collect::<Result<_, _>>()?;
                 if let Some(&callee) = funcs.get(callee) {
-                    builder.add_stmt(
-                        mir,
-                        *block,
-                        dst,
-                        mir::Value::Call { callee, args },
-                        start,
-                        end,
-                    )?
+                    builder.add_stmt(mir, *block, dst, mir::Value::Call { callee, args }, span)?
                 } else {
                     panic!("function `{}` doesn't exist", callee);
                 }
@@ -285,7 +269,7 @@ impl Expression {
                 let ty = arg.ty(tys, funcs, locals, builder, mir)?;
                 let var = builder.add_anonymous_local(ty);
                 arg.to_mir(var, tys, mir, builder, block, funcs, locals)?;
-                builder.add_stmt(mir, *block, dst, mir::Value::Log(var), start, end)?;
+                builder.add_stmt(mir, *block, dst, mir::Value::Log(var), span)?;
             }
         }
 
@@ -338,7 +322,7 @@ impl Block_ {
                                     StringlyType::UserDefinedType(ref s) => s.clone(),
                                     StringlyType::Unit => unreachable!(),
                                 };
-                                return Err(TypeError::type_not_found(str_ty, stmt.start, stmt.end));
+                                return Err(TypeError::type_not_found(str_ty, stmt.span));
                             }
                         }
                     } else {
@@ -385,8 +369,7 @@ impl From<ParserError> for AstError {
     fn from(pe: ParserError) -> AstError {
         Spanned {
             thing: AstErrorVariant::Parser(pe.thing),
-            start: pe.start,
-            end: pe.end,
+            span: pe.span,
         }
     }
 }
@@ -419,8 +402,7 @@ impl Ast {
                     name,
                     Spanned {
                         thing: ItemVariant::Function(thing),
-                        start,
-                        end,
+                        span,
                     },
                 )) => {
                     if let Some(orig) = funcs.get(&name) {
@@ -429,15 +411,13 @@ impl Ast {
                                 name: name.clone(),
                                 original: Spanned {
                                     thing: (),
-                                    start: orig.start,
-                                    end: orig.end,
+                                    span: orig.span,
                                 },
                             },
-                            start,
-                            end,
+                            span,
                         });
                     };
-                    funcs.insert(name, Spanned { thing, start, end });
+                    funcs.insert(name, Spanned { thing, span });
                 }
                 Err(Spanned {
                     thing: ParserErrorVariant::ExpectedEof,

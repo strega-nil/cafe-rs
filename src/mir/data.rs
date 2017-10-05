@@ -1,6 +1,6 @@
 use super::*;
 
-use parse::{Location, Spanned};
+use parse::{Span, Spanned};
 
 #[derive(Copy, Clone, Debug)]
 pub struct Reference(pub(super) u32);
@@ -61,8 +61,7 @@ impl Value {
         &self,
         builder: &FunctionBuilder<'ctx>,
         mir: &Mir<'ctx>,
-        start: Location,
-        end: Option<Location>,
+        span: Span,
     ) -> Result<Type<'ctx>, TypeError<'ctx>> {
         match *self {
             Value::Literal(ref lit) => Ok(lit.ty(mir)),
@@ -82,8 +81,7 @@ impl Value {
                             lhs: ty_lhs,
                             rhs: ty_rhs,
                         },
-                        start,
-                        end,
+                        span,
                     })
                 } else {
                     let s32 = mir.get_builtin_type(BuiltinType::SInt(IntSize::I32));
@@ -100,8 +98,7 @@ impl Value {
                             lhs: ty_lhs,
                             rhs: ty_rhs,
                         },
-                        start,
-                        end,
+                        span,
                     })
                 } else {
                     Ok(mir.get_builtin_type(BuiltinType::Bool))
@@ -123,8 +120,7 @@ impl Value {
                             args_expected: callee.ty.params.number_of_types() as u32,
                             args_found: args.len() as u32,
                         },
-                        start,
-                        end,
+                        span,
                     });
                 }
 
@@ -136,8 +132,7 @@ impl Value {
                                 lhs: parm,
                                 rhs: arg_ty,
                             },
-                            start,
-                            end,
+                            span,
                         });
                     }
                 }

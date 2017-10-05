@@ -2,9 +2,6 @@
 
 extern crate clap;
 
-#[macro_use]
-mod macros;
-
 mod ast;
 mod containers;
 mod mir;

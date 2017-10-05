@@ -1,4 +1,4 @@
-use parse::{Location, Spanned};
+use parse::{Span, Spanned};
 use super::align;
 
 use std::{iter, slice};
@@ -41,19 +41,17 @@ impl<'ctx> Display for TypeErrorVariant<'ctx> {
 pub type TypeError<'ctx> = Spanned<TypeErrorVariant<'ctx>>;
 
 impl<'ctx> TypeError<'ctx> {
-    pub fn type_not_found(name: String, start: Location, end: Option<Location>) -> Self {
+    pub fn type_not_found(name: String, span: Span) -> Self {
         Spanned {
             thing: TypeErrorVariant::TypeNotFound(name),
-            start,
-            end,
+            span,
         }
     }
 
-    pub fn binding_not_found(name: String, start: Location, end: Option<Location>) -> Self {
+    pub fn binding_not_found(name: String, span: Span) -> Self {
         Spanned {
             thing: TypeErrorVariant::BindingNotFound(name),
-            start,
-            end,
+            span,
         }
     }
 }
