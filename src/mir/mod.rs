@@ -216,6 +216,22 @@ pub struct Mir<'ctx> {
     builtin_types: BuiltinTypes<'ctx>,
 }
 
+impl<'ctx> ::std::fmt::Display for FunctionType<'ctx> {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(f, "(")?;
+        if !self.params.is_empty() {
+            let mut iter = self.params.iter();
+            let mut last = iter.next().unwrap();
+            while let Some(cur) = iter.next() {
+                write!(f, "{}, ", last.name())?;
+                last = cur;
+            }
+            write!(f, "{})", last.name())?;
+        }
+        write!(f, "-> {}", self.ret.name())
+    }
+}
+
 // creation and run
 impl<'ctx> Mir<'ctx> {
     pub fn new(ctx: &'ctx MirCtxt<'ctx>, mut ast: Ast) -> Result<Self, TypeError<'ctx>> {
@@ -236,7 +252,7 @@ impl<'ctx> Mir<'ctx> {
         Ok(self_)
     }
 
-    pub fn run(&self) -> i32 {
+    pub fn run(&self) {
         for (i, &Function { ref name, .. }) in self.funcs.iter().enumerate() {
             if let Some("main") = name.as_ref().map(|s| &**s) {
                 return Runner::new(self).run(FunctionDecl(i));
@@ -252,13 +268,22 @@ impl<'ctx> Mir<'ctx> {
         &mut self,
         name: Option<String>,
         ty: FunctionType<'ctx>,
-    ) -> FunctionDecl {
+        span: Span,
+    ) -> Result<FunctionDecl, TypeError<'ctx>> {
+        if let Some("main") = name.as_ref().map(|x| &**x) {
+            if ty.ret != self.get_builtin_type(BuiltinType::Unit) {
+                return Err(Spanned {
+                    thing: TypeErrorVariant::IncorrectlyTypedMain { has: ty },
+                    span,
+                });
+            }
+        }
         self.funcs.push(Function {
             ty,
             name,
             value: None,
         });
-        FunctionDecl(self.funcs.len() - 1)
+        Ok(FunctionDecl(self.funcs.len() - 1))
     }
 
     pub fn get_function_builder(&self, decl: FunctionDecl) -> FunctionBuilder<'ctx> {

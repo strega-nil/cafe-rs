@@ -1,4 +1,3 @@
-val main(): s32 {
+val main() {
   let x: floop = 0;
-  0
 }

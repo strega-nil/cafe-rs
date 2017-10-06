@@ -9,6 +9,7 @@ use std::ops::{Deref, Index};
 pub enum TypeErrorVariant<'ctx> {
     TypeNotFound(String),
     BindingNotFound(String),
+    IncorrectlyTypedMain { has: super::FunctionType<'ctx> },
     Mismatched { lhs: Type<'ctx>, rhs: Type<'ctx> },
     NumberOfArgs {
         name: String,
@@ -23,6 +24,9 @@ impl<'ctx> Display for TypeErrorVariant<'ctx> {
         match *self {
             TypeNotFound(ref s) => write!(f, "could not find type '{}'", s),
             BindingNotFound(ref s) => write!(f, "could not find name '{}'", s),
+            IncorrectlyTypedMain { ref has } => {
+                write!(f, "main must have type () -> unit; it has type {}", has)
+            }
             Mismatched { lhs, rhs } => write!(f, "lhs ({}) != rhs ({})", lhs.name(), rhs.name()),
             NumberOfArgs {
                 ref name,

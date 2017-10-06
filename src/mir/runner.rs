@@ -54,7 +54,10 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
             Frame::Previous => self.call_stack[self.call_stack.len() - 2],
         };
         let offset = |off: usize| {
-            assert!(off < len, "tried to index out of bounds");
+            // it's completely valid for zero-sized types to be at the end of address space
+            if frame.func_ty.ret.size() != 0 {
+                assert!(off < len, "tried to index out of bounds");
+            }
             unsafe { base.offset(off as isize) }
         };
         match frame.func.bindings[ref_.0 as usize].kind {
@@ -142,15 +145,10 @@ impl<'mir, 'ctx> Runner<'mir, 'ctx> {
         tmp
     }
 
-    pub fn run(&mut self, func: mir::FunctionDecl) -> i32 {
+    pub fn run(&mut self, func: mir::FunctionDecl) {
         self.push_state(func);
         self.call();
-
-        let tmp = unsafe { self.read_value::<i32>(mir::Reference::ret()) };
-
         self.pop_state();
-
-        tmp
     }
 
     fn call(&mut self) {

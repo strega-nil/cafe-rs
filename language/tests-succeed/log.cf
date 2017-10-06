@@ -1,6 +1,5 @@
-val main(): s32 {
+val main() {
   log(42424242);
   log(true);
   log(());
-  0
 }

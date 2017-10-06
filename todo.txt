@@ -18,6 +18,7 @@ notes:
   * reference function parameters
   * fully flesh out the basic types
   * user defined types!
+  *** else-less if
   - parens
   - non-addition operators
 

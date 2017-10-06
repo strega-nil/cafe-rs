@@ -1,5 +1,4 @@
-val main(): s32 {
+val main() {
   let res: s32 = 0;
   let bloop: bool = true;
-  res
 }

@@ -1,4 +1,4 @@
-val main(): s32 {
+val main() {
   let x = 0;
-  x
+  log(x);
 }

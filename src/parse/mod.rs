@@ -575,6 +575,17 @@ impl<'src> Parser<'src> {
         let expr;
 
         loop {
+            if let Spanned {
+                thing: TokenVariant::CloseBrace,
+                span,
+            } = *self.peek_token()?
+            {
+                expr = Spanned {
+                    thing: ExpressionVariant::UnitLiteral,
+                    span,
+                };
+                break;
+            }
             match self.parse_expr_or_stmt()? {
                 Left(e) => {
                     expr = e;

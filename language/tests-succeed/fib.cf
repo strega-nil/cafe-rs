@@ -1,5 +1,5 @@
-val main(): s32 {
-  fib(15)
+val main() {
+  log(fib(15))
 }
 
 val fib(n: s32): s32 {

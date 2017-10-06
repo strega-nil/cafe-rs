@@ -449,7 +449,7 @@ impl Ast {
             let ret = tys.get(&func.ret_ty).unwrap();
 
             let decl =
-                mir.add_function_decl(Some(name.to_owned()), mir::FunctionType { ret, params });
+                mir.add_function_decl(Some(name.to_owned()), mir::FunctionType { ret, params }, func.span)?;
             mir_funcs.insert(name.to_owned(), decl);
         }
         for (name, func) in &self.funcs {
@@ -472,7 +472,7 @@ impl Display for StringlyType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             StringlyType::UserDefinedType(ref s) => write!(f, "{}", s),
-            _ => panic!(),
+            StringlyType::Unit => write!(f, "unit"),
         }
     }
 }

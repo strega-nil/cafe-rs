@@ -1,6 +1,5 @@
-val main(): s32 {
+val main() {
   foo();
-  1
 }
 
 val foo(): s32 {

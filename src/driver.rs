@@ -92,8 +92,10 @@ fn main() {
 
     if do_run {
         if print_run {
-            println!("    ===   RUN   ===    ");
-            println!("{}", mir.run());
+            if print_ast || print_mir {
+                println!("    ===   RUN   ===    ");
+            }
+            mir.run();
         } else {
             mir.run();
         }

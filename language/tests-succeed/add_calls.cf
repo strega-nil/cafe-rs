@@ -1,5 +1,5 @@
-val main(): s32 {
-  foo1() + foo2() + foo3() + foo4()
+val main() {
+  log(foo1() + foo2() + foo3() + foo4())
 }
 
 val foo1(): s32 {

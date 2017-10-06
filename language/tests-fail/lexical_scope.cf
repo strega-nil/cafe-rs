@@ -1,8 +1,6 @@
-val main(): s32 {
+val main() {
   if true {
     let x = 0;
-    ()
-  } else { () };
+  } else { };
   let y = x;
-  y
 }

@@ -1,5 +1,5 @@
-val main(): s32 {
-  fib(15)
+val main() {
+  log(fib(15))
 }
 
 val should_recurse(n: s32): bool {

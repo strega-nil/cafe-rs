@@ -1,4 +1,4 @@
-val main(): s32 {
+val main() {
   log(fib(15));
 
   let res = debug_s32(bloop(true, ()));
@@ -6,7 +6,6 @@ val main(): s32 {
   log(true);
   log(());
   let num_lits = 1 2 3 + 321 + 1 1 1;
-  0
 }
 
 val debug_s32(n: s32): s32 {

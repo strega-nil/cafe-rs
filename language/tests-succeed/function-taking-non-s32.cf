@@ -1,5 +1,5 @@
-val main(): s32 {
-  foo(true, ())
+val main() {
+  log(foo(true, ()))
 }
 
 val foo(x: bool, y: unit): s32 {

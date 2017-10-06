@@ -1,3 +1,4 @@
-val main(): s32 {
-  true
+val main() {
 }
+
+val foo(): s32 { true }

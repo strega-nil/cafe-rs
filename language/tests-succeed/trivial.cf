@@ -1,3 +1,2 @@
-val main(): s32 {
-  0
+val main() {
 }
