@@ -337,29 +337,49 @@ impl<'src> Parser<'src> {
                 fn parse(this: &mut Parser, span: Span) -> ParserResult<Expression> {
                     let cond = this.parse_expr()?;
                     let then = this.parse_block()?;
-                    eat_token!(this, KeywordElse);
-                    let els = if let Some(_) = maybe_eat_token!(this, KeywordIf) {
-                        let expr = parse(this, span)?;
-                        let span = expr.span;
-                        Spanned {
+                    if let Some(_) = maybe_eat_token!(this, KeywordElse) {
+                        let els = if let Some(_) = maybe_eat_token!(this, KeywordIf) {
+                            let expr = parse(this, span)?;
+                            let span = expr.span;
+                            Spanned {
+                                thing: Block_ {
+                                    statements: vec![],
+                                    expr,
+                                },
+                                span,
+                            }
+                        } else {
+                            this.parse_block()?
+                        };
+                        let end = els.span;
+                        Ok(Spanned {
+                            thing: ExpressionVariant::IfElse {
+                                cond: Box::new(cond),
+                                then: Box::new(then),
+                                els: Box::new(els),
+                            },
+                            span: span.union(end),
+                        })
+                    } else {
+                        let els = Spanned {
                             thing: Block_ {
                                 statements: vec![],
-                                expr,
+                                expr: Spanned {
+                                    thing: ExpressionVariant::UnitLiteral,
+                                    span,
+                                },
                             },
                             span,
-                        }
-                    } else {
-                        this.parse_block()?
-                    };
-                    let end = els.span;
-                    Ok(Spanned {
-                        thing: ExpressionVariant::IfElse {
-                            cond: Box::new(cond),
-                            then: Box::new(then),
-                            els: Box::new(els),
-                        },
-                        span: span.union(end),
-                    })
+                        };
+                        Ok(Spanned {
+                            thing: ExpressionVariant::IfElse {
+                                cond: Box::new(cond),
+                                then: Box::new(then),
+                                els: Box::new(els),
+                            },
+                            span,
+                        })
+                    }
                 };
                 parse(self, span)?
             }

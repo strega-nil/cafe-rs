@@ -21,6 +21,7 @@ notes:
   *** else-less if
   - parens
   - non-addition operators
+  - non-decimal integer literals
 
   - unary operators (+)
 

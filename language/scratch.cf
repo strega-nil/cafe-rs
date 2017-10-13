@@ -1,3 +1,5 @@
 val main() {
-  log(-10);
+  if true {
+    log(true);
+  }
 }
