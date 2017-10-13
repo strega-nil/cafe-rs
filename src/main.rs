@@ -8,9 +8,20 @@ mod mir;
 mod parse;
 
 use std::fs::File;
+use std::fmt;
 
 use ast::Ast;
 use mir::Mir;
+
+fn write_indent(f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
+    const INDENT_SIZE: usize = 2;
+    for _ in 0..(indent * INDENT_SIZE) {
+        write!(f, " ")?;
+    }
+    Ok(())
+}
+
+
 
 macro_rules! user_error {
   ($($args:expr),* $(,)*) => ({
@@ -87,7 +98,7 @@ fn main() {
     };
     if print_mir {
         println!("    ===   MIR   ===    ");
-        mir.print();
+        println!("{}", mir);
     }
 
     if do_run {

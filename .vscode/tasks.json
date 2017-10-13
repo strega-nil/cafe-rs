@@ -35,6 +35,20 @@
             ]
         },
         {
+            "taskName": "scratch-no-mir",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "run",
+                "--",
+                "--print-ast",
+                "language/scratch.cf"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ]
+        },
+        {
             "taskName": "test",
             "type": "shell",
             "command": "python",

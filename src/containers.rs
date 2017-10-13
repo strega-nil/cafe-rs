@@ -83,15 +83,17 @@ impl<T> Arena<T> {
         }
     }
 
-    pub fn call_on_all<F>(&self, f: F)
+    // calls the function on subsequent things until it hits Some, which it returns
+    pub fn call_on_all<F, R>(&self, mut f: F) -> Option<R>
     where
-        F: Fn(&T),
+        F: FnMut(&T) -> Option<R>,
     {
         let inner = self.arena.lock().unwrap();
         for v in &inner.0 {
             for el in v {
-                f(el)
+                if let Some(v) = f(el) { return Some(v); }
             }
         }
+        None
     }
 }

@@ -322,26 +322,39 @@ impl<'ctx> Mir<'ctx> {
     }
 }
 
+use std::fmt::{self, Display};
+
 // printing
-impl<'ctx> Mir<'ctx> {
-    pub fn print(&self) {
+impl<'ctx> Display for Mir<'ctx> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fn binding_name(binding: &Option<String>) -> &str {
             binding.as_ref().map(|s| &**s).unwrap_or("")
         }
-        fn print_binding(bindings: &[Binding], r: Reference) {
+        fn write_binding(
+            f: &mut fmt::Formatter,
+            bindings: &[Binding],
+            r: Reference,
+        ) -> fmt::Result {
             let name = binding_name(&bindings[r.0 as usize].name);
-            print!("{}_{}", name, r.0);
+            write!(f, "{}_{}", name, r.0)
         }
 
-        self.types.call_on_all(|ty| {
-            print!("type {} = ", ty.name());
+        if let Some(err) = self.types.call_on_all(|ty| {
+            if let Err(e) = write!(f, "type {} = ", ty.name()) {
+                return Some(e);
+            };
             match *ty.variant() {
                 TypeVariant::Builtin(_) => {
-                    println!("<builtin>;");
+                    if let Err(e) = writeln!(f, "<builtin>;") {
+                        return Some(e);
+                    };
                 }
                 TypeVariant::__LifetimeHolder(_) => unreachable!(),
             }
-        });
+            None
+        }) {
+            return Err(err);
+        };
         for &Function {
             ref ty,
             ref name,
@@ -349,74 +362,80 @@ impl<'ctx> Mir<'ctx> {
         } in &self.funcs
         {
             let (name, value) = (name.as_ref().unwrap(), value.as_ref().unwrap());
-            print!("func {}(", name);
+            write!(f, "func {}(", name)?;
             if !ty.params.is_empty() {
                 let mut iter = ty.params.iter();
                 let mut last = iter.next().expect("balkjlfkajdsf");
                 while let Some(cur) = iter.next() {
-                    print!("{}, ", last.name());
+                    write!(f, "{}, ", last.name())?;
                     last = cur;
                 }
-                print!("{}", last.name());
+                write!(f, "f, {}", last.name())?;
             }
-            println!("): {} = {{", ty.ret.name());
+            writeln!(f, "): {} {{", ty.ret.name())?;
 
-            println!("  locals = {{");
+            ::write_indent(f, 1)?;
+            writeln!(f, "locals = {{")?;
             for loc_ty in &value.locals {
-                println!("    {},", loc_ty.name());
+                ::write_indent(f, 2)?;
+                writeln!(f, "{},", loc_ty.name())?;
             }
-            println!("  }}");
+            ::write_indent(f, 1)?;
+            writeln!(f, "}}")?;
 
-            println!("  bindings = {{");
+            ::write_indent(f, 1)?;
+            writeln!(f, "bindings = {{")?;
             for (i, binding) in value.bindings.iter().enumerate() {
+                ::write_indent(f, 2)?;
                 match binding.kind {
-                    BindingKind::Return => println!("    <return>: {},", binding.ty.name()),
+                    BindingKind::Return => writeln!(f, "<return>: {},", binding.ty.name())?,
                     BindingKind::Param(p) => {
-                        println!(
-                            "    {}_{}: {} = <params>[{}],",
+                        writeln!(
+                            f,
+                            "{}_{}: {} = <params>[{}],",
                             binding_name(&binding.name),
                             i,
                             binding.ty.name(),
                             p,
-                        );
+                        )?;
                     }
                     BindingKind::Local(loc) => {
-                        println!(
-                            "    {}_{}: {} = <locals>[{}],",
+                        writeln!(
+                            f,
+                            "{}_{}: {} = <locals>[{}],",
                             binding_name(&binding.name),
                             i,
                             binding.ty.name(),
                             loc,
-                        );
+                        )?;
                     }
                 }
             }
-            println!("  }}");
+            ::write_indent(f, 1)?;
+            writeln!(f, "}}")?;
 
-            let print_value = |val: &Value| match *val {
-                Value::Literal(ref n) => {
-                    println!("literal {:?};", n);
-                }
+            let write_value = |f: &mut fmt::Formatter, val: &Value| match *val {
+                Value::Literal(ref n) => writeln!(f, "literal {:?};", n),
                 Value::Negative(r) => {
-                    print!("-");
-                    print_binding(&value.bindings, r);
-                    println!(";");
+                    write!(f, "-")?;
+                    write_binding(f, &value.bindings, r)?;
+                    writeln!(f, ";")
                 }
                 Value::Reference(r) => {
-                    print_binding(&value.bindings, r);
-                    println!(";");
+                    write_binding(f, &value.bindings, r)?;
+                    writeln!(f, ";")
                 }
                 Value::Add(lhs, rhs) => {
-                    print_binding(&value.bindings, lhs);
-                    print!(" + ");
-                    print_binding(&value.bindings, rhs);
-                    println!(";");
+                    write_binding(f, &value.bindings, lhs)?;
+                    write!(f, " + ")?;
+                    write_binding(f, &value.bindings, rhs)?;
+                    writeln!(f, ";")
                 }
                 Value::LessEq(lhs, rhs) => {
-                    print_binding(&value.bindings, lhs);
-                    print!(" <= ");
-                    print_binding(&value.bindings, rhs);
-                    println!(";");
+                    write_binding(f, &value.bindings, lhs)?;
+                    write!(f, " <= ")?;
+                    write_binding(f, &value.bindings, rhs)?;
+                    writeln!(f, ";")
                 }
                 Value::Call {
                     ref callee,
@@ -426,52 +445,57 @@ impl<'ctx> Mir<'ctx> {
                         Some(ref name) => &**name,
                         None => "<anonymous>",
                     };
-                    print!("{}(", name);
+                    write!(f, "{}(", name)?;
                     if !args.is_empty() {
                         for arg in &args[..args.len() - 1] {
-                            print_binding(&value.bindings, *arg);
-                            print!(", ");
+                            write_binding(f, &value.bindings, *arg)?;
+                            write!(f, ", ")?;
                         }
-                        print_binding(&value.bindings, args[args.len() - 1]);
+                        write_binding(f, &value.bindings, args[args.len() - 1])?;
                     }
-                    println!(");");
+                    writeln!(f, ");")
                 }
                 Value::Log(ref arg) => {
-                    print!("log(");
-                    print_binding(&value.bindings, *arg);
-                    println!(");");
+                    write!(f, "log(")?;
+                    write_binding(f, &value.bindings, *arg)?;
+                    writeln!(f, ");")
                 }
             };
 
             for (n, bb) in value.blks.iter().enumerate() {
-                println!("  bb{} = {{", n);
+                ::write_indent(f, 1)?;
+                writeln!(f, "bb{} = {{", n)?;
                 for stmt in &bb.stmts {
                     let Statement { ref lhs, ref rhs } = *stmt;
                     if lhs.0 == 0 {
-                        print!("    <return> = ");
+                        ::write_indent(f, 2)?;
+                        write!(f, "<return> = ")?;
                     } else {
-                        print!("    ");
-                        print_binding(&value.bindings, *lhs);
-                        print!(" = ");
+                        ::write_indent(f, 2)?;
+                        write_binding(f, &value.bindings, *lhs)?;
+                        write!(f, " = ")?;
                     }
-                    print_value(rhs);
+                    write_value(f, rhs)?;
                 }
+                ::write_indent(f, 2)?;
                 match bb.term {
                     Terminator::Goto(blk) => {
-                        println!("    goto bb{};", blk.0);
+                        writeln!(f, "goto bb{};", blk.0)?;
                     }
                     Terminator::Return => {
-                        println!("    return;");
+                        writeln!(f, "return;")?;
                     }
                     Terminator::IfElse { cond, then, els } => {
-                        print!("    if ");
-                        print_binding(&value.bindings, cond);
-                        println!(" {{ bb{} }} else {{ bb{} }}", then.0, els.0,);
+                        write!(f, "if ")?;
+                        write_binding(f, &value.bindings, cond)?;
+                        writeln!(f, " {{ bb{} }} else {{ bb{} }}", then.0, els.0)?;
                     }
                 }
-                println!("  }}");
+                ::write_indent(f, 1)?;
+                writeln!(f, "}}")?;
             }
-            println!("}}");
+            writeln!(f, "}}")?;
         }
+        Ok(())
     }
 }

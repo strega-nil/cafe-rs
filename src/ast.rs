@@ -5,8 +5,6 @@ use containers::Scope;
 use mir::{self, Mir, TypeError};
 use parse::{ItemVariant, Parser, ParserError, ParserErrorVariant, Spanned};
 
-const INDENT_SIZE: usize = 2;
-
 // user defined types will be strings
 #[derive(Clone, Debug)]
 pub enum StringlyType {
@@ -461,19 +459,25 @@ impl Display for BinOp {
     }
 }
 
-fn write_indent(f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
-    for _ in 0..indent {
-        write!(f, " ")?;
-    }
-    Ok(())
-}
-
 impl ExpressionVariant {
     fn is_nullary(&self) -> bool {
         if let ExpressionVariant::UnitLiteral = *self {
             true
         } else {
             false
+        }
+    }
+
+    fn fmt_as_block(&self, f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
+        if let ExpressionVariant::Block { .. } = *self {
+            self.fmt(f, indent)
+        } else {
+            writeln!(f, "{{")?;
+            ::write_indent(f, indent + 1)?;
+            self.fmt(f, indent + 1)?;
+            writeln!(f, "")?;
+            ::write_indent(f, indent)?;
+            write!(f, "}}")
         }
     }
     fn fmt(&self, f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
@@ -505,16 +509,16 @@ impl ExpressionVariant {
             } => {
                 writeln!(f, "{{")?;
                 for stmt in statements {
-                    write_indent(f, indent + INDENT_SIZE)?;
-                    stmt.thing.fmt(f, indent + INDENT_SIZE)?;
+                    ::write_indent(f, indent + 1)?;
+                    stmt.thing.fmt(f, indent + 1)?;
                     writeln!(f, ";")?;
                 }
                 if !expr.is_nullary() {
-                    write_indent(f, indent + INDENT_SIZE)?;
-                    expr.fmt(f, indent + INDENT_SIZE)?;
+                    ::write_indent(f, indent + 1)?;
+                    expr.fmt(f, indent + 1)?;
                     writeln!(f, "")?;
                 }
-                write_indent(f, indent)?;
+                ::write_indent(f, indent)?;
                 write!(f, "}}")
             }
             ExpressionVariant::IfElse {
@@ -525,11 +529,11 @@ impl ExpressionVariant {
                 write!(f, "if ")?;
                 cond.fmt(f, indent)?;
                 write!(f, " ")?;
-                then.fmt(f, indent)?;
-                if !els.is_nullary() {
-                    write!(f, " else ")?;
-                    els.fmt(f, indent)?;
-                }
+                then.fmt_as_block(f, indent)?;
+                //if !els.is_nullary() {
+                write!(f, " else ")?;
+                els.fmt_as_block(f, indent)?;
+                //}
                 Ok(())
             }
             ExpressionVariant::Call {
@@ -589,9 +593,9 @@ impl Display for Ast {
                 let (ref name, ref ty) = func.params[func.params.len() - 1];
                 write!(f, "{}: {}", name, ty)?;
             }
-            write!(f, "): {} = ", func.ret_ty)?;
-            func.expr.fmt(f, 0)?;
-            writeln!(f, ";")?;
+            write!(f, "): {} ", func.ret_ty)?;
+            func.expr.fmt_as_block(f, 0)?;
+            writeln!(f, "")?;
         }
         Ok(())
     }
