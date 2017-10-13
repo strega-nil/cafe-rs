@@ -5,6 +5,8 @@ use containers::Scope;
 use mir::{self, Mir, TypeError};
 use parse::{ItemVariant, Parser, ParserError, ParserErrorVariant, Spanned};
 
+const INDENT_SIZE: usize = 2;
+
 // user defined types will be strings
 #[derive(Clone, Debug)]
 pub enum StringlyType {
@@ -31,11 +33,14 @@ pub enum ExpressionVariant {
     BoolLiteral(bool),
     Variable(String),
     Negative(Box<Expression>),
-    Block(Box<Block>),
+    Block {
+        statements: Vec<Statement>,
+        expr: Box<Expression>,
+    },
     IfElse {
         cond: Box<Expression>,
-        then: Box<Block>,
-        els: Box<Block>,
+        then: Box<Expression>,
+        els: Box<Expression>,
     },
     BinOp {
         lhs: Box<Expression>,
@@ -49,6 +54,18 @@ pub enum ExpressionVariant {
     Log(Box<Expression>),
 }
 pub type Expression = Spanned<ExpressionVariant>;
+
+impl Expression {
+    pub fn from_block(blk: Block) -> Self {
+        Spanned {
+            thing: ExpressionVariant::Block {
+                statements: blk.thing.statements,
+                expr: Box::new(blk.thing.expr),
+            },
+            span: blk.span,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum StatementVariant {
@@ -141,7 +158,7 @@ impl Expression {
                 Err(TypeError::binding_not_found(name.clone(), self.span))
             },
             ExpressionVariant::Negative(ref e) => e.ty(tys, funcs, locals, builder, mir),
-            ExpressionVariant::Block(ref b) => b.ty(tys, funcs, locals, builder, mir),
+            ExpressionVariant::Block { ref expr, .. } => expr.ty(tys, funcs, locals, builder, mir),
             ExpressionVariant::IfElse { ref then, .. } => then.ty(tys, funcs, locals, builder, mir),
             ExpressionVariant::BinOp {
                 op: BinOp::Plus,
@@ -210,8 +227,44 @@ impl Expression {
             } else {
                 return Err(TypeError::binding_not_found(name.clone(), span));
             },
-            ExpressionVariant::Block(ref blk) => {
-                blk.to_mir(dst, tys, mir, builder, block, funcs, locals)?;
+            ExpressionVariant::Block {
+                ref statements,
+                ref expr,
+            } => {
+                let mut locals = Scope::with_parent(locals);
+                for stmt in statements {
+                    match **stmt {
+                        StatementVariant::Expr(ref e) => {
+                            let ty = e.ty(tys, funcs, &locals, builder, mir)?;
+                            let tmp = builder.add_anonymous_local(ty);
+                            e.to_mir(tmp, tys, mir, builder, block, funcs, &locals)?;
+                        }
+                        StatementVariant::Local {
+                            ref name,
+                            ref ty,
+                            ref initializer,
+                        } => {
+                            let ty = if let Some(ref ty) = *ty {
+                                match tys.get(ty) {
+                                    Some(mir_ty) => mir_ty,
+                                    None => {
+                                        let str_ty = match *ty {
+                                            StringlyType::UserDefinedType(ref s) => s.clone(),
+                                            StringlyType::Unit => unreachable!(),
+                                        };
+                                        return Err(TypeError::type_not_found(str_ty, stmt.span));
+                                    }
+                                }
+                            } else {
+                                initializer.ty(tys, funcs, &locals, &builder, mir)?
+                            };
+                            let var = builder.add_local(name.clone(), ty);
+                            initializer.to_mir(var, tys, mir, builder, block, funcs, &locals)?;
+                            locals.insert(name.clone(), (ty, var));
+                        }
+                    };
+                }
+                expr.to_mir(dst, tys, mir, builder, block, funcs, &locals)?
             }
             ExpressionVariant::IfElse {
                 ref cond,
@@ -279,17 +332,6 @@ impl Expression {
 
 
 impl Block_ {
-    fn ty<'ctx>(
-        &self,
-        tys: &Types<'ctx>,
-        funcs: &HashMap<String, mir::FunctionDecl>,
-        locals: &Scope<(mir::Type<'ctx>, mir::Reference)>,
-        builder: &mir::FunctionBuilder<'ctx>,
-        mir: &Mir<'ctx>,
-    ) -> Result<mir::Type<'ctx>, TypeError<'ctx>> {
-        // NOTE(ubsan): this will be different when we get void
-        self.expr.ty(tys, funcs, locals, builder, mir)
-    }
     fn to_mir<'ctx>(
         &self,
         dst: mir::Reference,
@@ -448,8 +490,11 @@ impl Ast {
             };
             let ret = tys.get(&func.ret_ty).unwrap();
 
-            let decl =
-                mir.add_function_decl(Some(name.to_owned()), mir::FunctionType { ret, params }, func.span)?;
+            let decl = mir.add_function_decl(
+                Some(name.to_owned()),
+                mir::FunctionType { ret, params },
+                func.span,
+            )?;
             mir_funcs.insert(name.to_owned(), decl);
         }
         for (name, func) in &self.funcs {
@@ -517,7 +562,22 @@ impl ExpressionVariant {
                 write!(f, " {} ", op)?;
                 rhs.fmt(f, indent)
             }
-            ExpressionVariant::Block(ref b) => b.fmt(f, indent),
+            ExpressionVariant::Block {
+                ref statements,
+                ref expr,
+            } => {
+                writeln!(f, "{{")?;
+                for stmt in statements {
+                    write_indent(f, indent + INDENT_SIZE)?;
+                    stmt.thing.fmt(f, indent + INDENT_SIZE)?;
+                    writeln!(f, ";")?;
+                }
+                write_indent(f, indent + INDENT_SIZE)?;
+                expr.fmt(f, indent + INDENT_SIZE)?;
+                writeln!(f, "")?;
+                write_indent(f, indent)?;
+                write!(f, "}}")
+            }
             ExpressionVariant::IfElse {
                 ref cond,
                 ref then,
@@ -527,8 +587,11 @@ impl ExpressionVariant {
                 cond.fmt(f, indent)?;
                 write!(f, " ")?;
                 then.fmt(f, indent)?;
-                write!(f, " else ")?;
-                els.fmt(f, indent)
+                if let ExpressionVariant::Block { .. } = els.thing {
+                    write!(f, " else ")?;
+                    els.fmt(f, indent)?;
+                }
+                Ok(())
             }
             ExpressionVariant::Call {
                 ref callee,
@@ -579,12 +642,12 @@ impl Block_ {
     fn fmt(&self, f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
         writeln!(f, "{{")?;
         for stmt in &self.statements {
-            write_indent(f, indent + 2)?;
-            stmt.thing.fmt(f, indent + 2)?;
+            write_indent(f, indent + INDENT_SIZE)?;
+            stmt.thing.fmt(f, indent + INDENT_SIZE)?;
             writeln!(f, ";")?;
         }
-        write_indent(f, indent + 2)?;
-        self.expr.fmt(f, indent + 2)?;
+        write_indent(f, indent + INDENT_SIZE)?;
+        self.expr.fmt(f, indent + INDENT_SIZE)?;
         writeln!(f, "")?;
         write_indent(f, indent)?;
         write!(f, "}}")

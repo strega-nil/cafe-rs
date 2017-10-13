@@ -16,14 +16,15 @@
             "group": {
                 "kind": "build",
                 "isDefault": true
-            }
+            },
+            "isBackground": true
         },
         {
             "taskName": "scratch",
             "type": "shell",
             "command": "cargo",
             "args": [
-                "run", 
+                "run",
                 "--",
                 "--print-ast",
                 "--print-mir",

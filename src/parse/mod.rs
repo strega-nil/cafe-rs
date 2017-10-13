@@ -355,26 +355,20 @@ impl<'src> Parser<'src> {
                         Ok(Spanned {
                             thing: ExpressionVariant::IfElse {
                                 cond: Box::new(cond),
-                                then: Box::new(then),
-                                els: Box::new(els),
+                                then: Box::new(Expression::from_block(then)),
+                                els: Box::new(Expression::from_block(els)),
                             },
                             span: span.union(end),
                         })
                     } else {
                         let els = Spanned {
-                            thing: Block_ {
-                                statements: vec![],
-                                expr: Spanned {
-                                    thing: ExpressionVariant::UnitLiteral,
-                                    span,
-                                },
-                            },
+                            thing: ExpressionVariant::UnitLiteral,
                             span,
                         };
                         Ok(Spanned {
                             thing: ExpressionVariant::IfElse {
                                 cond: Box::new(cond),
-                                then: Box::new(then),
+                                then: Box::new(Expression::from_block(then)),
                                 els: Box::new(els),
                             },
                             span,
@@ -388,11 +382,9 @@ impl<'src> Parser<'src> {
             }
             TokenVariant::OpenBrace => {
                 let blk = self.parse_block_no_open(span)?;
-                let end = blk.span;
-                Spanned {
-                    thing: ExpressionVariant::Block(Box::new(blk)),
-                    span: span.union(end),
-                }
+                let mut ret = Expression::from_block(blk);
+                ret.span = span.union(ret.span);
+                ret
             }
             tok => panic!(
                 "unimplemented expression: {:?}",
