@@ -84,6 +84,7 @@ impl<T> Arena<T> {
     }
 
     // calls the function on subsequent things until it hits Some, which it returns
+    // hack to deal with the lack of generators
     pub fn call_on_all<F, R>(&self, mut f: F) -> Option<R>
     where
         F: FnMut(&T) -> Option<R>,
@@ -91,7 +92,9 @@ impl<T> Arena<T> {
         let inner = self.arena.lock().unwrap();
         for v in &inner.0 {
             for el in v {
-                if let Some(v) = f(el) { return Some(v); }
+                if let Some(v) = f(el) {
+                    return Some(v);
+                }
             }
         }
         None
