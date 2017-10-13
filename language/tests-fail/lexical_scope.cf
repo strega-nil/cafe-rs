@@ -1,4 +1,4 @@
-val main() {
+func main() {
   if true {
     let x = 0;
   } else { };

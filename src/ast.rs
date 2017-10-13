@@ -55,18 +55,6 @@ pub enum ExpressionVariant {
 }
 pub type Expression = Spanned<ExpressionVariant>;
 
-impl Expression {
-    pub fn from_block(blk: Block) -> Self {
-        Spanned {
-            thing: ExpressionVariant::Block {
-                statements: blk.thing.statements,
-                expr: Box::new(blk.thing.expr),
-            },
-            span: blk.span,
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum StatementVariant {
     Expr(Expression),
@@ -79,17 +67,10 @@ pub enum StatementVariant {
 pub type Statement = Spanned<StatementVariant>;
 
 #[derive(Debug)]
-pub struct Block_ {
-    pub statements: Vec<Statement>,
-    pub expr: Expression,
-}
-pub type Block = Spanned<Block_>;
-
-#[derive(Debug)]
 pub struct FunctionValue {
     pub params: Vec<(String, StringlyType)>,
     pub ret_ty: StringlyType,
-    pub blk: Block_,
+    pub expr: Expression,
 }
 pub type Function = Spanned<FunctionValue>;
 
@@ -330,57 +311,6 @@ impl Expression {
     }
 }
 
-
-impl Block_ {
-    fn to_mir<'ctx>(
-        &self,
-        dst: mir::Reference,
-        // TODO(ubsan): this state should probably all be in a struct
-        tys: &Types<'ctx>,
-        mir: &mut Mir<'ctx>,
-        builder: &mut mir::FunctionBuilder<'ctx>,
-        block: &mut mir::Block,
-        funcs: &HashMap<String, mir::FunctionDecl>,
-        locals: &Scope<(mir::Type<'ctx>, mir::Reference)>,
-    ) -> Result<(), TypeError<'ctx>> {
-        let mut locals = Scope::with_parent(locals);
-        for stmt in &self.statements {
-            match **stmt {
-                StatementVariant::Expr(ref e) => {
-                    let ty = e.ty(tys, funcs, &locals, builder, mir)?;
-                    let tmp = builder.add_anonymous_local(ty);
-                    e.to_mir(tmp, tys, mir, builder, block, funcs, &locals)?;
-                }
-                StatementVariant::Local {
-                    ref name,
-                    ref ty,
-                    ref initializer,
-                } => {
-                    let ty = if let Some(ref ty) = *ty {
-                        match tys.get(ty) {
-                            Some(mir_ty) => mir_ty,
-                            None => {
-                                let str_ty = match *ty {
-                                    StringlyType::UserDefinedType(ref s) => s.clone(),
-                                    StringlyType::Unit => unreachable!(),
-                                };
-                                return Err(TypeError::type_not_found(str_ty, stmt.span));
-                            }
-                        }
-                    } else {
-                        initializer.ty(tys, funcs, &locals, &builder, mir)?
-                    };
-                    let var = builder.add_local(name.clone(), ty);
-                    initializer.to_mir(var, tys, mir, builder, block, funcs, &locals)?;
-                    locals.insert(name.clone(), (ty, var));
-                }
-            };
-        }
-        self.expr
-            .to_mir(dst, tys, mir, builder, block, funcs, &locals)
-    }
-}
-
 impl Function {
     fn build_mir<'ctx>(
         &self,
@@ -401,7 +331,7 @@ impl Function {
 
         let mut block = builder.entrance();
         let ret = mir::Reference::ret();
-        self.blk
+        self.expr
             .to_mir(ret, tys, mir, &mut builder, &mut block, funcs, &mut locals)?;
         Ok(mir.add_function_definition(builder))
     }
@@ -539,6 +469,13 @@ fn write_indent(f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
 }
 
 impl ExpressionVariant {
+    fn is_nullary(&self) -> bool {
+        if let ExpressionVariant::UnitLiteral = *self {
+            true
+        } else {
+            false
+        }
+    }
     fn fmt(&self, f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
         match *self {
             ExpressionVariant::IntLiteral { is_negative, value } => if is_negative {
@@ -572,9 +509,11 @@ impl ExpressionVariant {
                     stmt.thing.fmt(f, indent + INDENT_SIZE)?;
                     writeln!(f, ";")?;
                 }
-                write_indent(f, indent + INDENT_SIZE)?;
-                expr.fmt(f, indent + INDENT_SIZE)?;
-                writeln!(f, "")?;
+                if !expr.is_nullary() {
+                    write_indent(f, indent + INDENT_SIZE)?;
+                    expr.fmt(f, indent + INDENT_SIZE)?;
+                    writeln!(f, "")?;
+                }
                 write_indent(f, indent)?;
                 write!(f, "}}")
             }
@@ -587,7 +526,7 @@ impl ExpressionVariant {
                 cond.fmt(f, indent)?;
                 write!(f, " ")?;
                 then.fmt(f, indent)?;
-                if let ExpressionVariant::Block { .. } = els.thing {
+                if !els.is_nullary() {
                     write!(f, " else ")?;
                     els.fmt(f, indent)?;
                 }
@@ -637,28 +576,11 @@ impl StatementVariant {
     }
 }
 
-
-impl Block_ {
-    fn fmt(&self, f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
-        writeln!(f, "{{")?;
-        for stmt in &self.statements {
-            write_indent(f, indent + INDENT_SIZE)?;
-            stmt.thing.fmt(f, indent + INDENT_SIZE)?;
-            writeln!(f, ";")?;
-        }
-        write_indent(f, indent + INDENT_SIZE)?;
-        self.expr.fmt(f, indent + INDENT_SIZE)?;
-        writeln!(f, "")?;
-        write_indent(f, indent)?;
-        write!(f, "}}")
-    }
-}
-
 impl Display for Ast {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for (name, func) in &self.funcs {
             let ref func = func.thing;
-            write!(f, "let {}(", name)?;
+            write!(f, "func {}(", name)?;
             if !func.params.is_empty() {
                 for p in &func.params[..func.params.len() - 1] {
                     let (ref name, ref ty) = *p;
@@ -667,9 +589,9 @@ impl Display for Ast {
                 let (ref name, ref ty) = func.params[func.params.len() - 1];
                 write!(f, "{}: {}", name, ty)?;
             }
-            write!(f, "): {} ", func.ret_ty)?;
-            func.blk.fmt(f, 0)?;
-            writeln!(f, "")?;
+            write!(f, "): {} = ", func.ret_ty)?;
+            func.expr.fmt(f, 0)?;
+            writeln!(f, ";")?;
         }
         Ok(())
     }

@@ -1,8 +1,8 @@
-val main() {
+func main() {
   log(fib(15))
 }
 
-val fib(n: s32): s32 {
+func fib(n: s32): s32 {
   let neg_one: s32 = -1;
   if n <= 1 {
     n

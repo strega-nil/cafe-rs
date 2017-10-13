@@ -1,4 +1,4 @@
-val main() {
+func main() {
 }
 
-val foo(): s32 { true }
+func foo(): s32 { true }

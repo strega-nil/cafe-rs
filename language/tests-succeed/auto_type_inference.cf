@@ -1,4 +1,4 @@
-val main() {
+func main() {
   let x = 0;
   log(x);
 }

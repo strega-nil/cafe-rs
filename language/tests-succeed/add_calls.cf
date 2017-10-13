@@ -1,19 +1,19 @@
-val main() {
+func main() {
   log(foo1() + foo2() + foo3() + foo4())
 }
 
-val foo1(): s32 {
+func foo1(): s32 {
   1
 }
 
-val foo2(): s32 {
+func foo2(): s32 {
   2
 }
 
-val foo3(): s32 {
+func foo3(): s32 {
   3
 }
 
-val foo4(): s32 {
+func foo4(): s32 {
   4
 }

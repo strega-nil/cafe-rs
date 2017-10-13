@@ -1,3 +1,3 @@
-val main() {
+func main() {
     log(if true { () });
 }

@@ -114,9 +114,9 @@ pub enum TokenVariant {
     KeywordFalse,
     KeywordIf,
     KeywordElse,
-    //KeywordFunc,
+    KeywordFunc,
     KeywordLet,
-    KeywordVal,
+    //KeywordVal,
     Ident(String),
     Integer(u64),
 
@@ -403,8 +403,8 @@ impl<'src> Lexer<'src> {
                 // keyword
                 let tok = if ident == "let" {
                     TokenVariant::KeywordLet
-                } else if ident == "val" {
-                    TokenVariant::KeywordVal
+                } else if ident == "func" {
+                    TokenVariant::KeywordFunc
                 } else if ident == "true" {
                     TokenVariant::KeywordTrue
                 } else if ident == "false" {
@@ -413,8 +413,8 @@ impl<'src> Lexer<'src> {
                     TokenVariant::KeywordIf
                 } else if ident == "else" {
                     TokenVariant::KeywordElse
-                } else if ident == "func" {
-                    return err("func");
+                } else if ident == "val" {
+                    return err("val");
                 } else if ident == "type" {
                     return err("type");
                 } else if ident == "data" {

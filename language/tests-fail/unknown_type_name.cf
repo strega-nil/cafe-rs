@@ -1,3 +1,3 @@
-val main() {
+func main() {
   let x: floop = 0;
 }

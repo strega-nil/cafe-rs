@@ -1,7 +1,7 @@
-val main() {
+func main() {
   foo();
 }
 
-val foo(): s32 {
+func foo(): s32 {
   0
 }

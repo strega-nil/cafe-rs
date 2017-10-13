@@ -1,4 +1,4 @@
-val main() {
+func main() {
   log(42424242);
   log(true);
   log(());

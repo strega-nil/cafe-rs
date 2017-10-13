@@ -1,4 +1,4 @@
-val main() {
+func main() {
   if true {
     log(true);
   }

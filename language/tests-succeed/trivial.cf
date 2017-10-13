@@ -1,2 +1,2 @@
-val main() {
+func main() {
 }

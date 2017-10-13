@@ -1,8 +1,8 @@
 pub mod lexer;
 
 use self::lexer::{Lexer, LexerError, LexerErrorVariant, Token, TokenVariant};
-use ast::{BinOp, Block, Block_, Expression, ExpressionVariant, FunctionValue, Statement,
-          StatementVariant, StringlyType};
+use ast::{BinOp, Expression, ExpressionVariant, FunctionValue, Statement, StatementVariant,
+          StringlyType};
 
 use std::ops::{Deref, DerefMut};
 use std::str;
@@ -339,15 +339,7 @@ impl<'src> Parser<'src> {
                     let then = this.parse_block()?;
                     if let Some(_) = maybe_eat_token!(this, KeywordElse) {
                         let els = if let Some(_) = maybe_eat_token!(this, KeywordIf) {
-                            let expr = parse(this, span)?;
-                            let span = expr.span;
-                            Spanned {
-                                thing: Block_ {
-                                    statements: vec![],
-                                    expr,
-                                },
-                                span,
-                            }
+                            parse(this, span)?
                         } else {
                             this.parse_block()?
                         };
@@ -355,8 +347,8 @@ impl<'src> Parser<'src> {
                         Ok(Spanned {
                             thing: ExpressionVariant::IfElse {
                                 cond: Box::new(cond),
-                                then: Box::new(Expression::from_block(then)),
-                                els: Box::new(Expression::from_block(els)),
+                                then: Box::new(then),
+                                els: Box::new(els),
                             },
                             span: span.union(end),
                         })
@@ -368,7 +360,7 @@ impl<'src> Parser<'src> {
                         Ok(Spanned {
                             thing: ExpressionVariant::IfElse {
                                 cond: Box::new(cond),
-                                then: Box::new(Expression::from_block(then)),
+                                then: Box::new(then),
                                 els: Box::new(els),
                             },
                             span,
@@ -380,12 +372,7 @@ impl<'src> Parser<'src> {
             TokenVariant::KeywordElse => {
                 return unexpected_token!(TokenVariant::KeywordElse, Expr, span);
             }
-            TokenVariant::OpenBrace => {
-                let blk = self.parse_block_no_open(span)?;
-                let mut ret = Expression::from_block(blk);
-                ret.span = span.union(ret.span);
-                ret
-            }
+            TokenVariant::OpenBrace => self.parse_block_no_open(span)?,
             tok => panic!(
                 "unimplemented expression: {:?}",
                 Spanned { thing: tok, span },
@@ -582,10 +569,12 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn parse_block_no_open(&mut self, start: Span) -> ParserResult<Block> {
+    fn parse_block_no_open(&mut self, start: Span) -> ParserResult<Expression> {
         let mut statements = vec![];
         let expr;
 
+        // NOTE(ubsan): optimization point: we can optimize by not wrapping the
+        // expression in a block, if there are no statements
         loop {
             if let Spanned {
                 thing: TokenVariant::CloseBrace,
@@ -607,20 +596,23 @@ impl<'src> Parser<'src> {
             }
         }
         let end = eat_token!(self, CloseBrace).span;
-        let thing = Block_ { statements, expr };
+        let thing = ExpressionVariant::Block {
+            statements,
+            expr: Box::new(expr),
+        };
         Ok(Spanned {
             thing,
             span: start.union(end),
         })
     }
 
-    fn parse_block(&mut self) -> ParserResult<Block> {
+    fn parse_block(&mut self) -> ParserResult<Expression> {
         let span = eat_token!(self, OpenBrace).span;
         self.parse_block_no_open(span)
     }
 
     fn parse_item_definition(&mut self) -> ParserResult<(String, Item)> {
-        eat_token!(self, KeywordVal);
+        eat_token!(self, KeywordFunc);
         let Spanned { thing, span } = self.get_token()?;
         match thing {
             TokenVariant::Ident(name) => {
@@ -633,16 +625,17 @@ impl<'src> Parser<'src> {
                     }
                 };
                 let blk = self.parse_block()?;
+                let expr_span = blk.span;
                 let thing = ItemVariant::Function(FunctionValue {
                     params: params.thing,
                     ret_ty,
-                    blk: blk.thing,
+                    expr: blk,
                 });
                 Ok((
                     name,
                     Spanned {
                         thing,
-                        span: span.union(blk.span),
+                        span: span.union(expr_span),
                     },
                 ))
             }
