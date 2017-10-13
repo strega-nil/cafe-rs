@@ -1,0 +1,56 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "cafe",
+	"foldingStartMarker": "\\{\\s*$",
+	"foldingStopMarker": "^\\s*$\\}",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#constants"
+		}
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.cafe",
+					"match": "\\b(let|func|if|else)\\b"
+				},
+				{
+					"name": "keyword.operator.cafe",
+					"match": "\\b(log)\\b"
+				},
+				{
+					"name": "invalid.illegal.cafe",
+					"match": "\\b(val|type|data|raw|mut|own)\\b"
+				}
+			]
+		},
+		"constants": {
+			"patterns": [
+				{
+					"name": "constant.language.cafe",
+					"match": "\\b(true|false)\\b"
+				},
+				{
+					"name": "constant.numeric.cafe",
+					"match": "\\b( ?[0-9])+( ?[a-zA-Z][a-zA-Z0-9]*)?\\b"
+				},
+				{
+					"name": "string.quoted.double.cafe",
+					"begin": "\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.cafe",
+							"match": "\\\\."
+						}
+					]
+				}
+			]
+		}
+	},
+	"scopeName": "source.cafe"
+}
