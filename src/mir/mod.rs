@@ -370,7 +370,7 @@ impl<'ctx> Display for Mir<'ctx> {
                     write!(f, "{}, ", last.name())?;
                     last = cur;
                 }
-                write!(f, "f, {}", last.name())?;
+                write!(f, "{}", last.name())?;
             }
             writeln!(f, "): {} {{", ty.ret.name())?;
 
