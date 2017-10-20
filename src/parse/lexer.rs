@@ -99,9 +99,10 @@ pub type LexerError = Spanned<LexerErrorVariant>;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenVariant {
     // Categories
-	//KeywordRaw,
-	//KeywordMut,
-	//KeywordOwn,
+    //KeywordRaw,
+    //KeywordRef,
+    //KeywordMut,
+    //KeywordOwn,
 
 	// Braces
     OpenBrace,
@@ -421,6 +422,8 @@ impl<'src> Lexer<'src> {
                     return err("data");
                 } else if ident == "raw" {
                     return err("raw");
+                } else if ident == "ref" {
+                    return err("ref");
                 } else if ident == "mut" {
                     return err("mut");
                 } else if ident == "own" {

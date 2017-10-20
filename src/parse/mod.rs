@@ -274,8 +274,6 @@ impl<'src> Parser<'src> {
         let Spanned { thing, span } = self.get_token()?;
         match thing {
             TokenVariant::Ident(s) => Ok(StringlyType::UserDefinedType(s)),
-            //TokenVariant::And => unimplemented!(),
-            //TokenVariant::Star => unimplemented!(),
             tok => unexpected_token!(tok, Type, span),
         }
     }
