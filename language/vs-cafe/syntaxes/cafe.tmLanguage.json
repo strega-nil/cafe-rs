@@ -9,6 +9,9 @@
 		},
 		{
 			"include": "#constants"
+		},
+		{
+			"include": "#comments"
 		}
 	],
 	"repository": {
@@ -16,7 +19,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.cafe",
-					"match": "\\b(let|func|if|else)\\b"
+					"match": "\\b(type|struct|let|func|if|else)\\b"
 				},
 				{
 					"name": "keyword.operator.cafe",
@@ -24,7 +27,7 @@
 				},
 				{
 					"name": "invalid.illegal.cafe",
-					"match": "\\b(val|type|data|raw|mut|own)\\b"
+					"match": "\\b(val|data|raw|mut|own)\\b"
 				}
 			]
 		},
@@ -48,6 +51,19 @@
 							"match": "\\\\."
 						}
 					]
+				}
+			]
+		},
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line",
+					"match": "//.*\n"
+				},
+				{
+					"name": "comment.block",
+					"begin": "/\\*",
+					"end": "\\*/"
 				}
 			]
 		}

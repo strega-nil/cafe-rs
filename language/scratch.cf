@@ -1,9 +1,10 @@
-func main() {
-  let x = 0;
-  test(x);
-  log(x);
+type t = struct { x: s32 };
+
+func log_t(v: t) {
+  // log(v.x);
 }
 
-func test(x: mut s32) {
-  x = 1;
+func main() {
+  let v = t { x = 1 };
+  log_t(v);
 }

@@ -86,7 +86,7 @@ impl Display for LexerErrorVariant {
         match *self {
             IdentAfterIntLiteral => write!(
                 f,
-                "found ident after int literal (this is reserved for future extensions"
+                "found ident after int literal (this is reserved for future extensions)"
             ),
             UnclosedComment => write!(f, "unclosed comment"),
             ReservedToken(ref s) => write!(f, "reserved token: '{}'", s),
@@ -111,12 +111,15 @@ pub enum TokenVariant {
     CloseParen,
 
     // Expression
+    Dot,
     KeywordTrue,
     KeywordFalse,
     KeywordIf,
     KeywordElse,
     KeywordFunc,
     KeywordLet,
+    KeywordType,
+    KeywordStruct,
     //KeywordVal,
     Ident(String),
     Integer(u64),
@@ -268,6 +271,17 @@ impl<'src> Lexer<'src> {
             '{' => Ok(Spanned::single(TokenVariant::OpenBrace, loc)),
             '}' => Ok(Spanned::single(TokenVariant::CloseBrace, loc)),
             ';' => Ok(Spanned::single(TokenVariant::Semicolon, loc)),
+            '.' => match self.peekc() {
+                Some(('.', end_loc)) => {
+                    self.getc();
+                    Err(Spanned::span(
+                        LexerErrorVariant::ReservedToken(".."),
+                        loc,
+                        end_loc,
+                    ))
+                }
+                _ => Ok(Spanned::single(TokenVariant::Dot, loc)),
+            },
             ':' => match self.peekc() {
                 Some((':', end_loc)) => {
                     self.getc();
@@ -406,6 +420,10 @@ impl<'src> Lexer<'src> {
                     TokenVariant::KeywordLet
                 } else if ident == "func" {
                     TokenVariant::KeywordFunc
+                } else if ident == "type" {
+                    TokenVariant::KeywordType
+                } else if ident == "struct" {
+                    TokenVariant::KeywordStruct
                 } else if ident == "true" {
                     TokenVariant::KeywordTrue
                 } else if ident == "false" {
@@ -416,8 +434,6 @@ impl<'src> Lexer<'src> {
                     TokenVariant::KeywordElse
                 } else if ident == "val" {
                     return err("val");
-                } else if ident == "type" {
-                    return err("type");
                 } else if ident == "data" {
                     return err("data");
                 } else if ident == "raw" {

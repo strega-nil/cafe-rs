@@ -73,6 +73,12 @@ pub struct FunctionValue {
 pub type Function = Spanned<FunctionValue>;
 
 #[derive(Debug)]
+pub struct StructValue {
+    pub members: Vec<(String, StringlyType)>,
+}
+pub type Struct = Spanned<StructValue>;
+
+#[derive(Debug)]
 pub enum AstErrorVariant {
     Parser(ParserErrorVariant),
     MultipleValueDefinitions { name: String, original: Spanned<()> },
@@ -366,15 +372,19 @@ impl Ast {
     pub fn new(file: &str) -> AstResult<Self> {
         let mut parse = Parser::new(file);
         let mut funcs = HashMap::<String, Function>::new();
+        let mut types = HashMap::<String, Struct>::new();
         loop {
-            match parse.next_item() {
-                Ok((
-                    name,
-                    Spanned {
-                        thing: ItemVariant::Function(thing),
-                        span,
-                    },
-                )) => {
+            let tmp = parse.next_item();
+            if let Err(Spanned {
+                thing: ParserErrorVariant::ExpectedEof,
+                ..
+            }) = tmp
+            {
+                break;
+            }
+            let (name, Spanned { thing, span }) = tmp?;
+            match thing {
+                ItemVariant::Function(thing) => {
                     if let Some(orig) = funcs.get(&name) {
                         return Err(Spanned {
                             thing: AstErrorVariant::MultipleValueDefinitions {
@@ -389,11 +399,10 @@ impl Ast {
                     };
                     funcs.insert(name, Spanned { thing, span });
                 }
-                Err(Spanned {
-                    thing: ParserErrorVariant::ExpectedEof,
-                    ..
-                }) => break,
-                Err(e) => return Err(e.into()),
+                ItemVariant::StructDecl(members) => {
+                    let thing = StructValue { members };
+                    types.insert(name, Spanned { thing, span });
+                }
             }
         }
         Ok(Ast { funcs })

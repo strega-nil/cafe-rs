@@ -82,7 +82,7 @@ impl<T: Display> Display for Spanned<T> {
 
 pub enum ItemVariant {
     Function(FunctionValue),
-    //Type(Type),
+    StructDecl(Vec<(String, StringlyType)>),
 }
 pub type Item = Spanned<ItemVariant>;
 
@@ -93,6 +93,7 @@ pub enum ExpectedToken {
     Expr,
     Parameter,
     Argument,
+    ItemKeyword,
     SpecificToken(TokenVariant),
 }
 
@@ -142,78 +143,70 @@ pub struct Parser<'src> {
 }
 
 macro_rules! unexpected_token {
-  (
-    $tok:expr,
-    $expected:ident,
-    $span:expr
-    $(,)*
-  ) => ({
-    let thing = ParserErrorVariant::UnexpectedToken {
-      found: $tok,
-      expected: ExpectedToken::$expected,
-    };
-    Err(Spanned { thing, span: $span })
-  });
-  (
-    $tok:expr,
-    $expected:ident
-    $(,)*
-  ) => ({
-    unexpected_token!(
-      $tok.thing,
-      $expected,
-      $tok.span,
-    )
-  });
+    (
+        $tok:expr,
+        $expected:ident,
+        $span:expr
+        $(,)*
+    ) => ({
+        let thing = ParserErrorVariant::UnexpectedToken {
+            found: $tok,
+            expected: ExpectedToken::$expected,
+        };
+        Err(Spanned { thing, span: $span })
+    });
+    (
+        $tok:expr,
+        $expected:ident
+        $(,)*
+    ) => (unexpected_token!($tok.thing, $expected, $tok.span));
 }
 
 macro_rules! allow_eof {
-  ($tok:expr) => (
-    match $tok {
-      t @ Ok(_) => t,
-      Err(sp) => {
-        let Spanned { thing, span } = sp;
-        match thing {
-          ParserErrorVariant::UnexpectedToken {
-            found: TokenVariant::Eof,
-            ..
-          } => Err(Spanned {
-            thing: ParserErrorVariant::ExpectedEof,
-            span,
-          }),
-          thing => Err(Spanned { thing, span }),
+    ($tok:expr) => (
+        match $tok {
+            t @ Ok(_) => t,
+            Err(sp) => {
+                let Spanned { thing, span } = sp;
+                match thing {
+                    ParserErrorVariant::UnexpectedToken {
+                    found: TokenVariant::Eof,
+                    ..
+                    } => Err(Spanned {
+                        thing: ParserErrorVariant::ExpectedEof,
+                        span,
+                    }),
+                    thing => Err(Spanned { thing, span }),
+                }
+            },
         }
-      },
-    }
-  )
+    )
 }
 
 macro_rules! eat_token {
-  ($slf:expr, $tok:ident) => ({
-    match $slf.get_token()? {
-      s @ Spanned { thing: TokenVariant::$tok, .. } => s,
-      Spanned { thing, span } => return Err(Spanned {
-        thing: ParserErrorVariant::UnexpectedToken {
-          found: thing,
-          expected:
-            ExpectedToken::SpecificToken(
-              TokenVariant::$tok,
-            ),
-        },
-        span,
-      }),
-    }
-  });
+    ($slf:expr, $tok:ident) => ({
+        match $slf.get_token()? {
+            s @ Spanned { thing: TokenVariant::$tok, .. } => s,
+            Spanned { thing, span } => return Err(Spanned {
+                thing: ParserErrorVariant::UnexpectedToken {
+                    found: thing,
+                    expected: ExpectedToken::SpecificToken(TokenVariant::$tok),
+                },
+                span,
+            }),
+        }
+    });
 }
 
 macro_rules! maybe_eat_token {
-  ($slf:expr, $tok:ident) => ({
-    match $slf.peek_token()? {
-      &Spanned { thing: TokenVariant::$tok, .. }
-      => Some($slf.get_token()?),
-      _ => None,
-    }
-  });
+    ($slf:expr, $tok:ident) => ({
+        match $slf.peek_token()? {
+            &Spanned { thing: TokenVariant::$tok, .. } => Some(
+                $slf.get_token()?
+            ),
+            _ => None,
+        }
+    });
 }
 
 // NOTE(ubsan): once we get internal blocks, we should really
@@ -609,9 +602,9 @@ impl<'src> Parser<'src> {
         self.parse_block_no_open(span)
     }
 
-    fn parse_item_definition(&mut self) -> ParserResult<(String, Item)> {
-        eat_token!(self, KeywordFunc);
+    fn parse_func_decl(&mut self, open_kw_span: Span) -> ParserResult<(String, Item)> {
         let Spanned { thing, span } = self.get_token()?;
+        let span = open_kw_span.union(span);
         match thing {
             TokenVariant::Ident(name) => {
                 let params = self.parse_param_list()?;
@@ -638,6 +631,49 @@ impl<'src> Parser<'src> {
                 ))
             }
             tok => unexpected_token!(tok, Ident, span),
+        }
+    }
+
+    fn parse_type_decl(&mut self, open_kw_span: Span) -> ParserResult<(String, Item)> {
+        let Spanned { thing, span } = self.get_token()?;
+        let span = open_kw_span.union(span);
+        match thing {
+            TokenVariant::Ident(name) => {
+                eat_token!(self, Equals);
+                eat_token!(self, KeywordStruct);
+                eat_token!(self, OpenBrace);
+                let mut members: Vec<(String, StringlyType)> = Vec::new();
+                loop {
+                    let next_tok = self.get_token()?;
+                    if let TokenVariant::CloseBrace = next_tok.thing {
+                        break;
+                    }
+                    if let TokenVariant::Ident(name) = next_tok.thing {
+                        eat_token!(self, Colon);
+                        let ty = self.parse_type()?;
+                        members.push((name, ty));
+                    } else {
+                        return unexpected_token!(next_tok, Ident);
+                    }
+                }
+                let end = eat_token!(self, Semicolon).span;
+                let span = span.union(end);
+                let item = Spanned {
+                    thing: ItemVariant::StructDecl(members),
+                    span,
+                };
+                Ok((name, item))
+            }
+            tok => unexpected_token!(tok, Ident, span),
+        }
+    }
+
+    fn parse_item_definition(&mut self) -> ParserResult<(String, Item)> {
+        let Spanned { thing, span } = self.get_token()?;
+        match thing {
+            TokenVariant::KeywordFunc => self.parse_func_decl(span),
+            TokenVariant::KeywordType => self.parse_type_decl(span),
+            tok => unexpected_token!(tok, ItemKeyword, span),
         }
     }
 

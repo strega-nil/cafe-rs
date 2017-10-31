@@ -1,5 +1,3 @@
-#![allow(unused_parens)] // this lint is stupid
-
 extern crate clap;
 
 mod ast;
